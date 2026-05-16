@@ -1,0 +1,17 @@
+{
+  "name": "gold-alert-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot that monitors Iranian gold/coin bubble and sends alerts.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node src/check-once.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "telegraf": "^4.16.3"
+  }
+}

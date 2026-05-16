@@ -1,0 +1,15 @@
+[Unit]
+Description=Gold Alert Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/gold-alert-bot
+EnvironmentFile=/root/gold-alert-bot/.env
+ExecStart=/usr/bin/node /root/gold-alert-bot/src/index.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
