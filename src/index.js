@@ -6,6 +6,7 @@ const { buildReport, getSnapshot } = require('./monitor');
 const { parseMarketMessage } = require('./message-parser');
 const { formatAdminPanel } = require('./format');
 const { formatAdminAlert, getNewAdminAlerts } = require('./admin-alerts');
+const { startBaleBot } = require('./bale-bot');
 const {
   getNotificationSettings,
   listDueNotificationSettings,
@@ -357,6 +358,7 @@ async function main() {
   await runScheduledNotifications().catch((error) => {
     console.error('Initial check failed:', error);
   });
+  await startBaleBot();
 }
 
 function shutdown(signal) {
