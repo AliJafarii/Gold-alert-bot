@@ -16,7 +16,7 @@ const {
 } = require('./database');
 
 const PLATFORM = 'bale';
-const messageOptions = { disable_web_page_preview: true, parse_mode: 'HTML' };
+const messageOptions = { disable_web_page_preview: true };
 const pendingCustomIntervals = new Set();
 
 function isEnabled() {
@@ -50,10 +50,23 @@ async function callBale(method, body) {
   return payload.result;
 }
 
+function toBaleText(text) {
+  return String(text || '')
+    .replace(/<b>(.*?)<\/b>/g, '$1')
+    .replace(/<strong>(.*?)<\/strong>/g, '$1')
+    .replace(/<code>(.*?)<\/code>/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
 async function sendChat(chatId, text, extra = {}) {
   return callBale('sendMessage', {
     chat_id: Number.isFinite(Number(chatId)) ? Number(chatId) : chatId,
-    text,
+    text: toBaleText(text),
     ...messageOptions,
     ...extra
   });

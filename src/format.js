@@ -137,9 +137,6 @@ function formatReport(snapshot) {
     if (source.silverOunceUsd) lines.push('  ⚪ اونس نقره: ' + formatUsd(source.silverOunceUsd));
     return lines;
   });
-  const trendChange = snapshot.trend.changePercent === null
-    ? ''
-    : 'تغییر ذخیره‌شده: ' + formatPercent(snapshot.trend.changePercent);
   const technical = snapshot.technical || {};
 
   return [
@@ -174,20 +171,7 @@ function formatReport(snapshot) {
     '',
     '<b>📈 سیگنال جهانی TradingView</b>',
     ...formatTechnicalLine('طلا جهانی', technical.gold),
-    ...formatTechnicalLine('نقره جهانی', technical.silver),
-    technical.updatedAt ? '• بروزرسانی سیگنال: ' + new Date(technical.updatedAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' }) : '',
-    '',
-    '<b>📉 رفتار قیمت</b>',
-    '• ' + escapeHtml(snapshot.trend.label),
-    trendChange ? '• ' + trendChange : '',
-    '',
-    '<b>🧭 جمع‌بندی</b>',
-    '• ' + escapeHtml(formatDecision(
-      snapshot.decision,
-      snapshot.technical,
-      snapshot.buyBubblePercent,
-      snapshot.sellBubblePercent
-    ))
+    ...formatTechnicalLine('نقره جهانی', technical.silver)
   ].filter((line) => line !== '').join('\n');
 }
 
