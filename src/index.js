@@ -13,19 +13,20 @@ if (!config.telegramBotToken) {
 
 const bot = new Telegraf(config.telegramBotToken);
 let previousDecision = 'hold';
+const messageOptions = { disable_web_page_preview: true, parse_mode: 'HTML' };
 
 async function safeReply(ctx, text) {
-  return ctx.reply(text, { disable_web_page_preview: true });
+  return ctx.reply(text, messageOptions);
 }
 
 async function sendConfiguredChat(text) {
   if (!config.telegramChatId) return;
-  await bot.telegram.sendMessage(config.telegramChatId, text, { disable_web_page_preview: true });
+  await bot.telegram.sendMessage(config.telegramChatId, text, messageOptions);
 }
 
 async function sendAdminChats(text) {
   for (const chatId of config.adminChatIds) {
-    await bot.telegram.sendMessage(chatId, text, { disable_web_page_preview: true });
+    await bot.telegram.sendMessage(chatId, text, messageOptions);
   }
 }
 

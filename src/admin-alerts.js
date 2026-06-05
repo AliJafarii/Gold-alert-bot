@@ -25,11 +25,18 @@ function buildErrorAlerts(errors = []) {
   }));
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function formatAdminAlert(alerts) {
   return [
-    'هشدار ادمین بات طلا',
+    '<b>🛡 هشدار ادمین بات طلا</b>',
     '',
-    ...alerts.map((alert) => 'ـ ' + alert.message),
+    ...alerts.map((alert) => '⚠️ ' + escapeHtml(alert.message)),
     '',
     'این منابع در میانگین فعلی اثر داده نشده‌اند یا نیاز به بررسی دارند.'
   ].join('\n');

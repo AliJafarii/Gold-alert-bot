@@ -30,15 +30,22 @@ function formatMarketPrice(value) {
   return Number.isFinite(value) ? value.toLocaleString('fa-IR', { maximumFractionDigits: 2 }) : 'نامشخص';
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function formatTechnicalLine(label, signal) {
-  if (!signal) return 'ـ ' + label + ': نامشخص';
+  if (!signal) return '• <b>' + escapeHtml(label) + ':</b> نامشخص';
   const parts = [
-    'ـ ' + label + ': ' + signal.label,
+    '• <b>' + escapeHtml(label) + ':</b> ' + escapeHtml(signal.label),
     'قیمت: ' + formatMarketPrice(signal.close),
     'تغییر: ' + formatOptionalPercent(signal.changePercent),
-    '۱ساعته: ' + signal.oneHourLabel,
-    '۴ساعته: ' + signal.fourHourLabel,
-    signal.rsiLabel
+    '۱ساعته: ' + escapeHtml(signal.oneHourLabel),
+    '۴ساعته: ' + escapeHtml(signal.fourHourLabel),
+    escapeHtml(signal.rsiLabel)
   ];
   return parts.join(' | ');
 }
@@ -62,37 +69,37 @@ function formatSourceDiagnostics(snapshot) {
   const diagnostics = snapshot.sourceDiagnostics || {};
   const lines = [];
   for (const [metric, detail] of Object.entries(diagnostics)) {
-    const excluded = (detail.excluded || []).map((item) => item.source + ' / ' + item.metricLabel + ' / ' + item.reason);
+    const excluded = (detail.excluded || []).map((item) => escapeHtml(item.source) + ' / ' + escapeHtml(item.metricLabel) + ' / ' + escapeHtml(item.reason));
     if (excluded.length) {
-      lines.push('ـ ' + metric + ': ' + excluded.join('، '));
+      lines.push('• <b>' + escapeHtml(metric) + ':</b> ' + excluded.join('، '));
     }
   }
   return lines;
 }
 
 function formatAdminPanel(snapshot) {
-  const sourceErrorLines = (snapshot.sourceErrors || []).map((item) => 'ـ خطا: ' + item.source + ' | ' + item.error);
-  const sourceAlertLines = (snapshot.sourceAlerts || []).map((item) => 'ـ حذف از میانگین: ' + item.message);
+  const sourceErrorLines = (snapshot.sourceErrors || []).map((item) => '⚠️ <b>خطا:</b> ' + escapeHtml(item.source) + ' | ' + escapeHtml(item.error));
+  const sourceAlertLines = (snapshot.sourceAlerts || []).map((item) => '🚫 <b>حذف از میانگین:</b> ' + escapeHtml(item.message));
   const diagnosticsLines = formatSourceDiagnostics(snapshot);
   return [
-    'پنل ادمین بات طلا',
+    '<b>🛡 پنل ادمین بات طلا</b>',
     '',
-    'وضعیت منابع:',
+    '<b>وضعیت منابع</b>',
     sourceErrorLines.length || sourceAlertLines.length || diagnosticsLines.length
       ? ''
-      : 'ـ همه منابع فعال فعلاً بدون خطا/حذف پرت هستند.',
+      : '✅ همه منابع فعال فعلاً بدون خطا/حذف پرت هستند.',
     ...sourceErrorLines,
     ...sourceAlertLines,
     ...diagnosticsLines,
     '',
-    'میانگین‌های فعلی پس از فیلتر:',
-    'ـ دلار: ' + Math.round(snapshot.dollarToman).toLocaleString('fa-IR') + ' تومان',
-    'ـ اونس طلا: ' + formatUsd(snapshot.ounceUsd),
-    'ـ طلای ۱۸: ' + formatToman(snapshot.gold.price),
-    'ـ سکه: ' + formatToman(snapshot.coin.price),
+    '<b>میانگین‌های فعلی پس از فیلتر</b>',
+    '💵 <b>دلار:</b> ' + Math.round(snapshot.dollarToman).toLocaleString('fa-IR') + ' تومان',
+    '🌕 <b>اونس طلا:</b> ' + formatUsd(snapshot.ounceUsd),
+    '🥇 <b>طلای ۱۸:</b> ' + formatToman(snapshot.gold.price),
+    '🟡 <b>سکه:</b> ' + formatToman(snapshot.coin.price),
     '',
-    'تصمیم فعلی:',
-    'ـ ' + formatDecision(snapshot.decision, snapshot.technical)
+    '<b>تصمیم فعلی</b>',
+    '🧭 ' + escapeHtml(formatDecision(snapshot.decision, snapshot.technical))
   ].filter((line) => line !== '').join('\n');
 }
 
@@ -112,7 +119,7 @@ function formatDecision(decision, technical) {
 function formatReport(snapshot) {
   const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
   const sourceLines = snapshot.sources.map((source) => {
-    const parts = ['ـ ' + source.name];
+    const parts = ['• <b>' + escapeHtml(source.name) + '</b>'];
     if (source.gold18Price) parts.push('طلا: ' + formatToman(source.gold18Price));
     if (source.coinPrice) parts.push('سکه: ' + formatToman(source.coinPrice));
     if (source.dollarToman) parts.push('دلار: ' + Math.round(source.dollarToman).toLocaleString('fa-IR') + ' تومان');
@@ -130,48 +137,48 @@ function formatReport(snapshot) {
   const technical = snapshot.technical || {};
 
   return [
-    'گزارش بازار طلا و ارز',
-    'زمان گزارش: ' + now,
+    '<b>📊 گزارش بازار طلا و ارز</b>',
+    '🕒 زمان گزارش: ' + now,
     '',
-    'دلار',
-    'ـ نرخ میانگین دلار: ' + Math.round(snapshot.dollarToman).toLocaleString('fa-IR') + ' تومان',
-    'ـ اونس جهانی طلا: ' + formatUsd(snapshot.ounceUsd),
+    '<b>💵 دلار و اونس</b>',
+    '• دلار میانگین: ' + Math.round(snapshot.dollarToman).toLocaleString('fa-IR') + ' تومان',
+    '• اونس جهانی طلا: ' + formatUsd(snapshot.ounceUsd),
     '',
-    'طلا',
-    'ـ نرخ میانگین طلای ۱۸ عیار: ' + formatToman(snapshot.gold.price),
-    'ـ ارزش نظری طلای ۱۸ عیار: ' + formatToman(snapshot.theoreticalGold18Rial),
-    'ـ حباب طلای ۱۸ عیار: ' + formatToman(snapshot.goldBubbleValue),
-    'ـ درصد حباب طلا: ' + formatPercent(snapshot.goldBubblePercent),
+    '<b>🥇 طلا</b>',
+    '• طلای ۱۸ عیار: ' + formatToman(snapshot.gold.price),
+    '• ارزش نظری: ' + formatToman(snapshot.theoreticalGold18Rial),
+    '• حباب: ' + formatToman(snapshot.goldBubbleValue),
+    '• درصد حباب: ' + formatPercent(snapshot.goldBubblePercent),
     '',
-    'سکه',
-    'ـ نرخ میانگین سکه: ' + formatToman(snapshot.coin.price),
-    'ـ ارزش ذاتی محاسبه‌شده: ' + formatToman(snapshot.intrinsicValue),
-    'ـ حباب تومانی سکه: ' + formatToman(snapshot.bubbleValue),
-    'ـ درصد حباب سکه: ' + formatPercent(snapshot.bubblePercent),
+    '<b>🟡 سکه</b>',
+    '• قیمت میانگین: ' + formatToman(snapshot.coin.price),
+    '• ارزش ذاتی: ' + formatToman(snapshot.intrinsicValue),
+    '• حباب تومانی: ' + formatToman(snapshot.bubbleValue),
+    '• درصد حباب: ' + formatPercent(snapshot.bubblePercent),
     '',
-    'نقره',
-    'ـ نرخ میانگین نقره ۹۹۹: ' + formatOptionalToman(snapshot.silverPrice),
-    'ـ اونس جهانی نقره: ' + formatOptionalUsd(snapshot.silverOunceUsd),
-    'ـ ارزش نظری نقره ۹۹۹: ' + formatOptionalToman(snapshot.theoreticalSilverRial),
-    'ـ حباب نقره ۹۹۹: ' + formatOptionalToman(snapshot.silverBubbleValue),
-    'ـ درصد حباب نقره: ' + formatOptionalPercent(snapshot.silverBubblePercent),
+    '<b>🥈 نقره</b>',
+    '• نقره ۹۹۹: ' + formatOptionalToman(snapshot.silverPrice),
+    '• اونس جهانی نقره: ' + formatOptionalUsd(snapshot.silverOunceUsd),
+    '• ارزش نظری: ' + formatOptionalToman(snapshot.theoreticalSilverRial),
+    '• حباب: ' + formatOptionalToman(snapshot.silverBubbleValue),
+    '• درصد حباب: ' + formatOptionalPercent(snapshot.silverBubblePercent),
     '',
-    'منابع قیمت:',
+    '<b>📌 منابع قیمت</b>',
     ...sourceLines,
     '',
-    'سیگنال جهانی TradingView:',
+    '<b>📈 سیگنال جهانی TradingView</b>',
     formatTechnicalLine('طلا جهانی', technical.gold),
     formatTechnicalLine('نقره جهانی', technical.silver),
-    technical.updatedAt ? 'ـ بروزرسانی سیگنال: ' + new Date(technical.updatedAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' }) : '',
+    technical.updatedAt ? '• بروزرسانی سیگنال: ' + new Date(technical.updatedAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' }) : '',
     '',
-    'رفتار قیمت:',
-    'ـ ' + snapshot.trend.label,
-    trendChange ? 'ـ ' + trendChange : '',
+    '<b>📉 رفتار قیمت</b>',
+    '• ' + escapeHtml(snapshot.trend.label),
+    trendChange ? '• ' + trendChange : '',
     '',
-    'جمع‌بندی:',
-    'ـ ' + formatDecision(snapshot.decision, snapshot.technical),
+    '<b>🧭 جمع‌بندی</b>',
+    '• ' + escapeHtml(formatDecision(snapshot.decision, snapshot.technical)),
     '',
-    'زمان بروزرسانی منبع: ' + (snapshot.coin.updatedAt || snapshot.gold.updatedAt || 'نامشخص')
+    '🕓 بروزرسانی منبع: ' + escapeHtml(snapshot.coin.updatedAt || snapshot.gold.updatedAt || 'نامشخص')
   ].filter((line) => line !== '').join('\n');
 }
 
