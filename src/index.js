@@ -26,7 +26,7 @@ const pendingCustomIntervals = new Set();
 
 function mainKeyboard(isAdmin = false) {
   const rows = [
-    ['📊 گزارش فوری', '🔔 تنظیم نوتیف'],
+    ['📊 گزارش فوری', '🔔 تنظیمات اطلاع‌رسانی'],
     ['⚙️ تنظیمات']
   ];
   if (isAdmin) rows[1].push('🛡 پنل ادمین');
@@ -65,7 +65,10 @@ function intervalLabel(minutes) {
   return minutes.toLocaleString('fa-IR') + ' دقیقه';
 }
 
-function notificationKeyboard() {
+function notificationKeyboard(settings) {
+  const toggleButton = settings && settings.enabled
+    ? Markup.button.callback('خاموش', 'notify:off')
+    : Markup.button.callback('روشن', 'notify:on');
   return Markup.inlineKeyboard([
     [
       Markup.button.callback('۱۰ دقیقه', 'notify:10'),
@@ -81,7 +84,7 @@ function notificationKeyboard() {
       Markup.button.callback('۲۴ ساعت', 'notify:1440')
     ],
     [
-      Markup.button.callback('خاموش', 'notify:off')
+      toggleButton
     ],
     [
       Markup.button.callback('بازه دلخواه', 'notify:custom')
@@ -92,15 +95,15 @@ function notificationKeyboard() {
 function formatNotificationSettings(settings) {
   if (!settings || !settings.enabled) {
     return [
-      '<b>🔔 تنظیم نوتیف قیمت</b>',
+      '<b>🔔 تنظیمات اطلاع‌رسانی</b>',
       '',
       'وضعیت فعلی: خاموش',
       '',
-    'یکی از بازه‌های آماده را انتخاب کن یا «بازه دلخواه» را بزن.'
+      'برای شروع، یکی از بازه‌های آماده را انتخاب کن یا «بازه دلخواه» را بزن.'
     ].join('\n');
   }
   return [
-    '<b>🔔 تنظیم نوتیف قیمت</b>',
+    '<b>🔔 تنظیمات اطلاع‌رسانی</b>',
     '',
     'وضعیت فعلی: روشن',
     'بازه ارسال: ' + intervalLabel(settings.interval_minutes),
@@ -132,6 +135,12 @@ async function collectReport() {
   return { snapshot, message };
 }
 
+async function sendImmediateReportAndStartInterval(chatId) {
+  const { message } = await collectReport();
+  await sendChat(chatId, message);
+  markNotificationSent(chatId);
+}
+
 async function runScheduledNotifications() {
   const dueSettings = listDueNotificationSettings();
   if (!dueSettings.length) return;
@@ -150,9 +159,7 @@ async function runScheduledNotifications() {
 bot.start(async (ctx) => {
   upsertUser(ctx.chat, isAdminChat(ctx));
   const settings = upsertNotificationSettings(ctx.chat.id);
-  const { message } = await buildReport();
-  await safeReply(ctx, message);
-  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
+  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
 });
 
 bot.command('check', async (ctx) => {
@@ -189,12 +196,13 @@ bot.command(['notify', 'notifications'], async (ctx) => {
   const parsed = parseNotifyMinutes(text);
   if (parsed === 'off') {
     const settings = setNotificationEnabled(ctx.chat.id, false);
-    await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
+    await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
     return;
   }
   if (parsed === 'on') {
     const settings = setNotificationEnabled(ctx.chat.id, true);
-    await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
+    await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
+    await sendImmediateReportAndStartInterval(ctx.chat.id);
     return;
   }
   if (typeof parsed === 'number') {
@@ -203,11 +211,12 @@ bot.command(['notify', 'notifications'], async (ctx) => {
       return;
     }
     const settings = setNotificationInterval(ctx.chat.id, parsed);
-    await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
+    await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
+    await sendImmediateReportAndStartInterval(ctx.chat.id);
     return;
   }
   const settings = upsertNotificationSettings(ctx.chat.id);
-  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
+  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
 });
 
 bot.hears('📊 گزارش فوری', async (ctx) => {
@@ -221,10 +230,10 @@ bot.hears('📊 گزارش فوری', async (ctx) => {
   }
 });
 
-bot.hears('🔔 تنظیم نوتیف', async (ctx) => {
+bot.hears('🔔 تنظیمات اطلاع‌رسانی', async (ctx) => {
   upsertUser(ctx.chat, isAdminChat(ctx));
   const settings = upsertNotificationSettings(ctx.chat.id);
-  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
+  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
 });
 
 bot.hears('⚙️ تنظیمات', async (ctx) => {
@@ -244,19 +253,24 @@ bot.hears('🛡 پنل ادمین', async (ctx) => {
   }
 });
 
-bot.action(/^notify:(\d+|off)$/, async (ctx) => {
+bot.action(/^notify:(\d+|on|off)$/, async (ctx) => {
   const value = ctx.match[1];
   let settings;
   if (value === 'off') {
     settings = setNotificationEnabled(ctx.chat.id, false);
+  } else if (value === 'on') {
+    settings = setNotificationEnabled(ctx.chat.id, true);
   } else {
     settings = setNotificationInterval(ctx.chat.id, Number(value));
   }
   await ctx.answerCbQuery('تنظیم شد');
   await ctx.editMessageText(formatNotificationSettings(settings), {
     ...messageOptions,
-    ...notificationKeyboard()
+    ...notificationKeyboard(settings)
   });
+  if (value !== 'off') {
+    await sendImmediateReportAndStartInterval(ctx.chat.id);
+  }
 });
 
 bot.action('notify:custom', async (ctx) => {
@@ -280,7 +294,8 @@ bot.on('text', async (ctx, next) => {
   }
   pendingCustomIntervals.delete(chatId);
   const settings = setNotificationInterval(ctx.chat.id, minutes);
-  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
+  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
+  await sendImmediateReportAndStartInterval(ctx.chat.id);
 });
 
 bot.command(['admin', 'sources'], async (ctx) => {
