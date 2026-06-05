@@ -127,8 +127,6 @@ function formatReport(snapshot) {
   const trendChange = snapshot.trend.changePercent === null
     ? ''
     : 'تغییر ذخیره‌شده: ' + formatPercent(snapshot.trend.changePercent);
-  const sourceErrorLines = (snapshot.sourceErrors || []).map((item) => 'ـ ' + item.source + ': ' + item.error);
-  const sourceAlertLines = (snapshot.sourceAlerts || []).map((item) => 'ـ ' + item.message);
   const technical = snapshot.technical || {};
 
   return [
@@ -160,8 +158,6 @@ function formatReport(snapshot) {
     '',
     'منابع قیمت:',
     ...sourceLines,
-    ...(sourceErrorLines.length ? ['', 'خطاهای منبع:', ...sourceErrorLines] : []),
-    ...(sourceAlertLines.length ? ['', 'منابع حذف‌شده از میانگین:', ...sourceAlertLines] : []),
     '',
     'سیگنال جهانی TradingView:',
     formatTechnicalLine('طلا جهانی', technical.gold),
