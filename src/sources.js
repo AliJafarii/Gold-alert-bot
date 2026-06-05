@@ -1,6 +1,7 @@
 const { fetchTgjuPrices } = require('./tgju');
 const { fetchExternalSources } = require('./external-sources');
 const { fetchTelegramDollarSources } = require('./telegram-dollar');
+const { fetchTradingViewData } = require('./tradingview');
 
 function parseLocalizedNumber(raw) {
   const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
@@ -111,6 +112,7 @@ async function fetchMarketSources(config) {
   const samples = [];
   const errors = [];
   let tgju = null;
+  let technical = null;
 
   if (sourceNames.has('tgju')) {
     try {
@@ -145,6 +147,16 @@ async function fetchMarketSources(config) {
     }
   }
 
+  if (sourceNames.has('tradingview')) {
+    try {
+      const tradingView = await fetchTradingViewData(config);
+      samples.push(...tradingView.samples);
+      technical = tradingView.technical;
+    } catch (error) {
+      errors.push({ source: 'tradingview', error: error.message });
+    }
+  }
+
   if (config.telegramDollarChannels.length) {
     try {
       samples.push(...await fetchTelegramDollarSources(config.telegramDollarChannels, {
@@ -165,7 +177,7 @@ async function fetchMarketSources(config) {
   if (!coinPrice) throw new Error('No usable coin price sources. Errors: ' + JSON.stringify(errors));
   if (!dollarToman) throw new Error('No usable dollar price sources. Errors: ' + JSON.stringify(errors));
   if (!ounceUsd) throw new Error('No usable ounce price sources. Errors: ' + JSON.stringify(errors));
-  return { gold18Price, coinPrice, dollarToman, ounceUsd, silverPrice, silverOunceUsd, samples, errors };
+  return { gold18Price, coinPrice, dollarToman, ounceUsd, silverPrice, silverOunceUsd, samples, errors, technical };
 }
 
 module.exports = { fetchMarketSources, parseLocalizedNumber, normalizeNearReference };

@@ -26,9 +26,48 @@ function formatOptionalPercent(value) {
   return value !== undefined && value !== null ? formatPercent(value) : 'نامشخص';
 }
 
-function formatDecision(decision) {
-  if (decision === 'buy') return 'حباب منفی است؛ از نظر حباب، موقعیت خرید جذاب‌تر شده.';
-  if (decision === 'sell') return 'حباب مثبت و بالاست؛ از نظر حباب، موقعیت فروش یا احتیاط جدی‌تر شده.';
+function formatMarketPrice(value) {
+  return Number.isFinite(value) ? value.toLocaleString('fa-IR', { maximumFractionDigits: 2 }) : 'نامشخص';
+}
+
+function formatTechnicalLine(label, signal) {
+  if (!signal) return 'ـ ' + label + ': نامشخص';
+  const parts = [
+    'ـ ' + label + ': ' + signal.label,
+    'قیمت: ' + formatMarketPrice(signal.close),
+    'تغییر: ' + formatOptionalPercent(signal.changePercent),
+    '۱ساعته: ' + signal.oneHourLabel,
+    '۴ساعته: ' + signal.fourHourLabel,
+    signal.rsiLabel
+  ];
+  return parts.join(' | ');
+}
+
+function formatTechnicalCaution(technical) {
+  const gold = technical && technical.gold;
+  if (!gold) return '';
+  if (gold.recommendFourHour <= -0.5 || gold.recommendAll <= -0.5) {
+    return 'سیگنال جهانی طلا فروش قوی است؛ حتی اگر حباب داخلی جذاب شد، ورود پله‌ای و محتاط‌تر بهتر است.';
+  }
+  if (gold.recommendFourHour >= 0.5 || gold.recommendAll >= 0.5) {
+    return 'سیگنال جهانی طلا خرید قوی است؛ اگر حباب داخلی هم مناسب باشد، تایید بیرونی بهتری داریم.';
+  }
+  if (gold.rsi <= 30 || gold.rsiOneHour <= 30 || gold.rsiFourHour <= 30) {
+    return 'طلا در TradingView نزدیک اشباع فروش است؛ احتمال برگشت کوتاه‌مدت را باید جدی‌تر دید.';
+  }
+  return 'سیگنال جهانی طلا فعلاً تایید قوی خلاف حباب داخلی نمی‌دهد.';
+}
+
+function formatDecision(decision, technical) {
+  const caution = formatTechnicalCaution(technical);
+  if (decision === 'buy') {
+    return 'حباب منفی است؛ از نظر حباب، موقعیت خرید جذاب‌تر شده.'
+      + (caution ? ' ' + caution : '');
+  }
+  if (decision === 'sell') {
+    return 'حباب مثبت و بالاست؛ از نظر حباب، موقعیت فروش یا احتیاط جدی‌تر شده.'
+      + (caution ? ' ' + caution : '');
+  }
   return 'حباب داخل محدوده تنظیم‌شده است؛ فعلاً هشدار خرید یا فروش نداریم.';
 }
 
@@ -51,6 +90,7 @@ function formatReport(snapshot) {
     ? ''
     : 'تغییر ذخیره‌شده: ' + formatPercent(snapshot.trend.changePercent);
   const sourceErrorLines = (snapshot.sourceErrors || []).map((item) => 'ـ ' + item.source + ': ' + item.error);
+  const technical = snapshot.technical || {};
 
   return [
     'گزارش بازار طلا و ارز',
@@ -83,12 +123,17 @@ function formatReport(snapshot) {
     ...sourceLines,
     ...(sourceErrorLines.length ? ['', 'خطاهای منبع:', ...sourceErrorLines] : []),
     '',
+    'سیگنال جهانی TradingView:',
+    formatTechnicalLine('طلا جهانی', technical.gold),
+    formatTechnicalLine('نقره جهانی', technical.silver),
+    technical.updatedAt ? 'ـ بروزرسانی سیگنال: ' + new Date(technical.updatedAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' }) : '',
+    '',
     'رفتار قیمت:',
     'ـ ' + snapshot.trend.label,
     trendChange ? 'ـ ' + trendChange : '',
     '',
     'جمع‌بندی:',
-    'ـ ' + formatDecision(snapshot.decision),
+    'ـ ' + formatDecision(snapshot.decision, snapshot.technical),
     '',
     'زمان بروزرسانی منبع: ' + (snapshot.coin.updatedAt || snapshot.gold.updatedAt || 'نامشخص')
   ].filter((line) => line !== '').join('\n');

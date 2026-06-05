@@ -25,6 +25,9 @@
 - TELEGRAM_BOT_TOKEN: توکن بات تلگرام
 - TELEGRAM_CHAT_ID: مقصد پیام هشدار
 - ENABLED_SOURCES: منابع فعال قیمت، فعلاً tgju,tala
+- TRADINGVIEW_TICKERS: نمادهای TradingView برای سیگنال جهانی، پیش‌فرض TVC:GOLD,TVC:SILVER,OANDA:XAUUSD
+- TRADINGVIEW_GOLD_TICKER: نماد مرجع طلا در TradingView، پیش‌فرض TVC:GOLD
+- TRADINGVIEW_SILVER_TICKER: نماد مرجع نقره در TradingView، پیش‌فرض TVC:SILVER
 - BUY_BUBBLE_PERCENT: آستانه خرید، پیش‌فرض منفی 5
 - SELL_BUBBLE_PERCENT: آستانه فروش، پیش‌فرض مثبت 5
 - HISTORY_FILE: فایل ذخیره تاریخچه برای تحلیل رفتار قیمت
@@ -34,3 +37,10 @@
 intrinsic = gold18Price * coinWeightGrams * (coinPurity / goldPricePurity)
 bubble = coinMarketPrice - intrinsic
 bubblePercent = bubble / intrinsic * 100
+
+## TradingView
+
+وقتی `tradingview` داخل `ENABLED_SOURCES` فعال باشد، بات از TradingView scanner برای
+اونس جهانی طلا و نقره، درصد تغییر، RSI، میانگین‌های متحرک، و خلاصه تکنیکال ۱ساعته
+و ۴ساعته استفاده می‌کند. این داده منبع اصلی قیمت داخلی ایران نیست؛ فقط لایه
+سیگنال جهانی است تا جمع‌بندی خرید/فروش محتاط‌تر شود.

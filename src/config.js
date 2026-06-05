@@ -40,6 +40,9 @@ const config = {
   historyFile: process.env.HISTORY_FILE || '/root/gold-alert-bot/data/history.jsonl',
   externalSourcesFile: process.env.EXTERNAL_SOURCES_FILE || '/root/gold-alert-bot/data/external-sources.json'
   ,
+  tradingViewTickers: process.env.TRADINGVIEW_TICKERS || 'TVC:GOLD,TVC:SILVER,OANDA:XAUUSD',
+  tradingViewGoldTicker: process.env.TRADINGVIEW_GOLD_TICKER || 'TVC:GOLD',
+  tradingViewSilverTicker: process.env.TRADINGVIEW_SILVER_TICKER || 'TVC:SILVER',
   telegramDollarChannels: (process.env.TELEGRAM_DOLLAR_CHANNELS || '')
     .split(',')
     .map((item) => item.trim())
