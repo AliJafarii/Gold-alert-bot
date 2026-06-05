@@ -82,6 +82,7 @@ function formatAdminPanel(snapshot) {
   const sourceAlertLines = (snapshot.sourceAlerts || []).map((item) => '🚫 <b>حذف از میانگین:</b> ' + escapeHtml(item.message));
   const diagnosticsLines = formatSourceDiagnostics(snapshot);
   return [
+    'آقا سید،',
     '<b>🛡 پنل ادمین بات طلا</b>',
     '',
     '<b>وضعیت منابع</b>',
@@ -137,6 +138,7 @@ function formatReport(snapshot) {
   const technical = snapshot.technical || {};
 
   return [
+    'آقا سید،',
     '<b>📊 گزارش بازار طلا و ارز</b>',
     '🕒 زمان گزارش: ' + now,
     '',
