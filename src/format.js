@@ -114,23 +114,23 @@ function formatDecision(decision, technical) {
     return 'حباب مثبت و بالاست؛ از نظر حباب، موقعیت فروش یا احتیاط جدی‌تر شده.'
       + (caution ? ' ' + caution : '');
   }
-  return 'حباب داخل محدوده تنظیم‌شده است؛ فعلاً هشدار خرید یا فروش نداریم.';
+  return 'فعلاً سیگنال خرید یا فروش نداریم؛ فقط رصد بازار.';
 }
 
 function formatReport(snapshot) {
   const now = new Date().toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' });
-  const sourceLines = snapshot.sources.map((source) => {
-    const parts = ['• <b>' + escapeHtml(source.name) + '</b>'];
-    if (source.gold18Price) parts.push('طلا: ' + formatToman(source.gold18Price));
-    if (source.coinPrice) parts.push('سکه: ' + formatToman(source.coinPrice));
-    if (source.dollarToman) parts.push('دلار: ' + Math.round(source.dollarToman).toLocaleString('fa-IR') + ' تومان');
-    if (source.ounceUsd) parts.push('اونس: ' + formatUsd(source.ounceUsd));
-    if (source.silverPrice) parts.push('نقره: ' + formatToman(source.silverPrice));
-    if (source.silverOunceUsd) parts.push('اونس نقره: ' + formatUsd(source.silverOunceUsd));
+  const sourceLines = snapshot.sources.flatMap((source) => {
+    const lines = ['• <b>' + escapeHtml(source.name) + '</b>'];
+    if (source.gold18Price) lines.push('  🥇 طلا: ' + formatToman(source.gold18Price));
+    if (source.coinPrice) lines.push('  🟡 سکه: ' + formatToman(source.coinPrice));
+    if (source.dollarToman) lines.push('  💵 دلار: ' + Math.round(source.dollarToman).toLocaleString('fa-IR') + ' تومان');
+    if (source.ounceUsd) lines.push('  🌕 اونس طلا: ' + formatUsd(source.ounceUsd));
+    if (source.silverPrice) lines.push('  🥈 نقره: ' + formatToman(source.silverPrice));
+    if (source.silverOunceUsd) lines.push('  ⚪ اونس نقره: ' + formatUsd(source.silverOunceUsd));
     if (source.reportedGoldBubblePercent !== undefined && source.reportedGoldBubblePercent !== null) {
-      parts.push('حباب طلای اعلامی: ' + formatPercent(source.reportedGoldBubblePercent));
+      lines.push('  📍 حباب اعلامی طلا: ' + formatPercent(source.reportedGoldBubblePercent));
     }
-    return parts.join(' | ');
+    return lines;
   });
   const trendChange = snapshot.trend.changePercent === null
     ? ''
@@ -178,9 +178,7 @@ function formatReport(snapshot) {
     trendChange ? '• ' + trendChange : '',
     '',
     '<b>🧭 جمع‌بندی</b>',
-    '• ' + escapeHtml(formatDecision(snapshot.decision, snapshot.technical)),
-    '',
-    '🕓 بروزرسانی منبع: ' + escapeHtml(snapshot.coin.updatedAt || snapshot.gold.updatedAt || 'نامشخص')
+    '• ' + escapeHtml(formatDecision(snapshot.decision, snapshot.technical))
   ].filter((line) => line !== '').join('\n');
 }
 
