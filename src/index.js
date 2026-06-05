@@ -141,9 +141,10 @@ async function runScheduledNotifications() {
 
 bot.start(async (ctx) => {
   upsertUser(ctx.chat, isAdminChat(ctx));
-  upsertNotificationSettings(ctx.chat.id);
+  const settings = upsertNotificationSettings(ctx.chat.id);
   const { message } = await buildReport();
   await safeReply(ctx, message);
+  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
 });
 
 bot.command('check', async (ctx) => {
