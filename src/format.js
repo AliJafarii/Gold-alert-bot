@@ -38,16 +38,16 @@ function escapeHtml(value) {
 }
 
 function formatTechnicalLine(label, signal) {
-  if (!signal) return '• <b>' + escapeHtml(label) + ':</b> نامشخص';
-  const parts = [
-    '• <b>' + escapeHtml(label) + ':</b> ' + escapeHtml(signal.label),
-    'قیمت: ' + formatMarketPrice(signal.close),
-    'تغییر: ' + formatOptionalPercent(signal.changePercent),
-    '۱ساعته: ' + escapeHtml(signal.oneHourLabel),
-    '۴ساعته: ' + escapeHtml(signal.fourHourLabel),
-    escapeHtml(signal.rsiLabel)
+  if (!signal) return ['• <b>' + escapeHtml(label) + '</b>', '  وضعیت: نامشخص'];
+  return [
+    '• <b>' + escapeHtml(label) + '</b>',
+    '  قیمت: ' + formatMarketPrice(signal.close),
+    '  تغییر: ' + formatOptionalPercent(signal.changePercent),
+    '  کلی: ' + escapeHtml(signal.label),
+    '  ۱ساعته: ' + escapeHtml(signal.oneHourLabel),
+    '  ۴ساعته: ' + escapeHtml(signal.fourHourLabel),
+    '  RSI: ' + escapeHtml(signal.rsiLabel.replace(/^RSI\s*/, ''))
   ];
-  return parts.join(' | ');
 }
 
 function formatTechnicalCaution(technical) {
@@ -99,11 +99,16 @@ function formatAdminPanel(snapshot) {
     '🟡 <b>سکه:</b> ' + formatToman(snapshot.coin.price),
     '',
     '<b>تصمیم فعلی</b>',
-    '🧭 ' + escapeHtml(formatDecision(snapshot.decision, snapshot.technical))
+    '🧭 ' + escapeHtml(formatDecision(
+      snapshot.decision,
+      snapshot.technical,
+      snapshot.buyBubblePercent,
+      snapshot.sellBubblePercent
+    ))
   ].filter((line) => line !== '').join('\n');
 }
 
-function formatDecision(decision, technical) {
+function formatDecision(decision, technical, buyThreshold, sellThreshold) {
   const caution = formatTechnicalCaution(technical);
   if (decision === 'buy') {
     return 'حباب منفی است؛ از نظر حباب، موقعیت خرید جذاب‌تر شده.'
@@ -113,7 +118,11 @@ function formatDecision(decision, technical) {
     return 'حباب مثبت و بالاست؛ از نظر حباب، موقعیت فروش یا احتیاط جدی‌تر شده.'
       + (caution ? ' ' + caution : '');
   }
-  return 'فعلاً سیگنال خرید یا فروش نداریم؛ فقط رصد بازار.';
+  return 'فعلاً سیگنال نداریم؛ خرید وقتی حباب سکه به '
+    + formatPercent(buyThreshold)
+    + ' یا کمتر برسد، فروش وقتی به '
+    + formatPercent(sellThreshold)
+    + ' یا بیشتر برسد.';
 }
 
 function formatReport(snapshot) {
@@ -126,9 +135,6 @@ function formatReport(snapshot) {
     if (source.ounceUsd) lines.push('  🌕 اونس طلا: ' + formatUsd(source.ounceUsd));
     if (source.silverPrice) lines.push('  🥈 نقره: ' + formatToman(source.silverPrice));
     if (source.silverOunceUsd) lines.push('  ⚪ اونس نقره: ' + formatUsd(source.silverOunceUsd));
-    if (source.reportedGoldBubblePercent !== undefined && source.reportedGoldBubblePercent !== null) {
-      lines.push('  📍 حباب اعلامی طلا: ' + formatPercent(source.reportedGoldBubblePercent));
-    }
     return lines;
   });
   const trendChange = snapshot.trend.changePercent === null
@@ -167,8 +173,8 @@ function formatReport(snapshot) {
     ...sourceLines,
     '',
     '<b>📈 سیگنال جهانی TradingView</b>',
-    formatTechnicalLine('طلا جهانی', technical.gold),
-    formatTechnicalLine('نقره جهانی', technical.silver),
+    ...formatTechnicalLine('طلا جهانی', technical.gold),
+    ...formatTechnicalLine('نقره جهانی', technical.silver),
     technical.updatedAt ? '• بروزرسانی سیگنال: ' + new Date(technical.updatedAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' }) : '',
     '',
     '<b>📉 رفتار قیمت</b>',
@@ -176,7 +182,12 @@ function formatReport(snapshot) {
     trendChange ? '• ' + trendChange : '',
     '',
     '<b>🧭 جمع‌بندی</b>',
-    '• ' + escapeHtml(formatDecision(snapshot.decision, snapshot.technical))
+    '• ' + escapeHtml(formatDecision(
+      snapshot.decision,
+      snapshot.technical,
+      snapshot.buyBubblePercent,
+      snapshot.sellBubblePercent
+    ))
   ].filter((line) => line !== '').join('\n');
 }
 

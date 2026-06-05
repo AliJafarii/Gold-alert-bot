@@ -3,5 +3,7 @@
 node_modules/
 data/history.jsonl
 data/admin-alert-state.json
+data/*.sqlite
+data/*.sqlite-*
 npm-debug.log*
 .DS_Store

@@ -56,6 +56,8 @@ async function getSnapshot() {
     ...goldBubble,
     ...(silverBubble || {}),
     decision,
+    buyBubblePercent: config.buyBubblePercent,
+    sellBubblePercent: config.sellBubblePercent,
     sources: market.samples,
     sourceErrors: market.errors,
     sourceDiagnostics: market.sourceDiagnostics,

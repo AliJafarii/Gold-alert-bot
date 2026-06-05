@@ -11,6 +11,7 @@
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
+    "better-sqlite3": "^12.10.0",
     "dotenv": "^17.4.2",
     "telegraf": "^4.16.3"
   }

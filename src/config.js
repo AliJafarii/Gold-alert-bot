@@ -46,6 +46,8 @@ const config = {
   sendStartupMessage: boolEnv('SEND_STARTUP_MESSAGE', true),
   alwaysSendReport: boolEnv('ALWAYS_SEND_REPORT', false),
   historyFile: process.env.HISTORY_FILE || '/root/gold-alert-bot/data/history.jsonl',
+  databaseFile: process.env.DATABASE_FILE || '/root/gold-alert-bot/data/gold-alert-bot.sqlite',
+  defaultNotificationIntervalMinutes: numberEnv('DEFAULT_NOTIFICATION_INTERVAL_MINUTES', 60),
   adminAlertStateFile: process.env.ADMIN_ALERT_STATE_FILE || '/root/gold-alert-bot/data/admin-alert-state.json',
   sourceMaxAgeHours: numberEnv('SOURCE_MAX_AGE_HOURS', 12),
   sourceOutlierPercent: numberEnv('SOURCE_OUTLIER_PERCENT', 6),
