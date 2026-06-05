@@ -22,9 +22,19 @@ if (!config.telegramBotToken) {
 
 const bot = new Telegraf(config.telegramBotToken);
 const messageOptions = { disable_web_page_preview: true, parse_mode: 'HTML' };
+const pendingCustomIntervals = new Set();
+
+function mainKeyboard(isAdmin = false) {
+  const rows = [
+    ['📊 گزارش فوری', '🔔 تنظیم نوتیف'],
+    ['⚙️ تنظیمات']
+  ];
+  if (isAdmin) rows[1].push('🛡 پنل ادمین');
+  return Markup.keyboard(rows).resize();
+}
 
 async function safeReply(ctx, text, extra = {}) {
-  return ctx.reply(text, { ...messageOptions, ...extra });
+  return ctx.reply(text, { ...messageOptions, ...mainKeyboard(isAdminChat(ctx)), ...extra });
 }
 
 async function sendConfiguredChat(text) {
@@ -72,6 +82,9 @@ function notificationKeyboard() {
     ],
     [
       Markup.button.callback('خاموش', 'notify:off')
+    ],
+    [
+      Markup.button.callback('بازه دلخواه', 'notify:custom')
     ]
   ]);
 }
@@ -83,8 +96,7 @@ function formatNotificationSettings(settings) {
       '',
       'وضعیت فعلی: خاموش',
       '',
-      'یکی از بازه‌های آماده را انتخاب کن یا برای بازه دلخواه بنویس:',
-      '<code>/notify 5</code>'
+    'یکی از بازه‌های آماده را انتخاب کن یا «بازه دلخواه» را بزن.'
     ].join('\n');
   }
   return [
@@ -93,11 +105,7 @@ function formatNotificationSettings(settings) {
     'وضعیت فعلی: روشن',
     'بازه ارسال: ' + intervalLabel(settings.interval_minutes),
     '',
-    'یکی از بازه‌های آماده را انتخاب کن یا برای بازه دلخواه بنویس:',
-    '<code>/notify 5</code>',
-    '',
-    'برای خاموش کردن:',
-    '<code>/notify off</code>'
+    'یکی از بازه‌های آماده را انتخاب کن یا «بازه دلخواه» را بزن.'
   ].join('\n');
 }
 
@@ -159,6 +167,10 @@ bot.command('check', async (ctx) => {
 });
 
 bot.command('settings', async (ctx) => {
+  await sendSettings(ctx);
+});
+
+async function sendSettings(ctx) {
   await safeReply(ctx, [
     '<b>⚙️ تنظیمات فعلی</b>',
     '',
@@ -169,7 +181,7 @@ bot.command('settings', async (ctx) => {
     '• آستانه فروش: ' + config.sellBubblePercent + '٪',
     '• فاصله جمع‌آوری داخلی: ' + config.checkIntervalMinutes + ' دقیقه'
   ].join('\n'));
-});
+}
 
 bot.command(['notify', 'notifications'], async (ctx) => {
   upsertUser(ctx.chat, isAdminChat(ctx));
@@ -198,6 +210,40 @@ bot.command(['notify', 'notifications'], async (ctx) => {
   await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
 });
 
+bot.hears('📊 گزارش فوری', async (ctx) => {
+  try {
+    upsertUser(ctx.chat, isAdminChat(ctx));
+    upsertNotificationSettings(ctx.chat.id);
+    const { message } = await collectReport();
+    await safeReply(ctx, message);
+  } catch (error) {
+    await safeReply(ctx, 'خطا در بررسی قیمت: ' + error.message);
+  }
+});
+
+bot.hears('🔔 تنظیم نوتیف', async (ctx) => {
+  upsertUser(ctx.chat, isAdminChat(ctx));
+  const settings = upsertNotificationSettings(ctx.chat.id);
+  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
+});
+
+bot.hears('⚙️ تنظیمات', async (ctx) => {
+  await sendSettings(ctx);
+});
+
+bot.hears('🛡 پنل ادمین', async (ctx) => {
+  if (!isAdminChat(ctx)) {
+    await safeReply(ctx, 'این بخش فقط برای ادمین فعال است.');
+    return;
+  }
+  try {
+    const snapshot = await getSnapshot();
+    await safeReply(ctx, formatAdminPanel(snapshot));
+  } catch (error) {
+    await safeReply(ctx, 'خطا در پنل ادمین: ' + error.message);
+  }
+});
+
 bot.action(/^notify:(\d+|off)$/, async (ctx) => {
   const value = ctx.match[1];
   let settings;
@@ -211,6 +257,30 @@ bot.action(/^notify:(\d+|off)$/, async (ctx) => {
     ...messageOptions,
     ...notificationKeyboard()
   });
+});
+
+bot.action('notify:custom', async (ctx) => {
+  pendingCustomIntervals.add(String(ctx.chat.id));
+  await ctx.answerCbQuery('عدد دقیقه را بفرست');
+  await safeReply(ctx, [
+    '<b>✏️ بازه دلخواه</b>',
+    '',
+    'عدد دقیقه را همینجا بفرست.',
+    'مثلاً: <code>5</code>'
+  ].join('\n'));
+});
+
+bot.on('text', async (ctx, next) => {
+  const chatId = String(ctx.chat.id);
+  if (!pendingCustomIntervals.has(chatId)) return next();
+  const minutes = parseNotifyMinutes(ctx.message.text);
+  if (typeof minutes !== 'number' || minutes < 1 || minutes > 1440) {
+    await safeReply(ctx, 'یک عدد بین ۱ تا ۱۴۴۰ دقیقه بفرست.');
+    return;
+  }
+  pendingCustomIntervals.delete(chatId);
+  const settings = setNotificationInterval(ctx.chat.id, minutes);
+  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard());
 });
 
 bot.command(['admin', 'sources'], async (ctx) => {
