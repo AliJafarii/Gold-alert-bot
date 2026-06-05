@@ -49,11 +49,12 @@ const config = {
   adminAlertStateFile: process.env.ADMIN_ALERT_STATE_FILE || '/root/gold-alert-bot/data/admin-alert-state.json',
   sourceMaxAgeHours: numberEnv('SOURCE_MAX_AGE_HOURS', 12),
   sourceOutlierPercent: numberEnv('SOURCE_OUTLIER_PERCENT', 6),
-  externalSourcesFile: process.env.EXTERNAL_SOURCES_FILE || '/root/gold-alert-bot/data/external-sources.json'
-  ,
+  externalSourcesFile: process.env.EXTERNAL_SOURCES_FILE || '/root/gold-alert-bot/data/external-sources.json',
   tradingViewTickers: process.env.TRADINGVIEW_TICKERS || 'TVC:GOLD,TVC:SILVER,OANDA:XAUUSD',
   tradingViewGoldTicker: process.env.TRADINGVIEW_GOLD_TICKER || 'TVC:GOLD',
   tradingViewSilverTicker: process.env.TRADINGVIEW_SILVER_TICKER || 'TVC:SILVER',
+  baleMarketChannels: listEnv('BALE_MARKET_CHANNELS', 'akhbardollar'),
+  telegramMarketChannels: listEnv('TELEGRAM_MARKET_CHANNELS', process.env.TELEGRAM_DOLLAR_CHANNELS || ''),
   telegramDollarChannels: (process.env.TELEGRAM_DOLLAR_CHANNELS || '')
     .split(',')
     .map((item) => item.trim())

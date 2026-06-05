@@ -1,8 +1,8 @@
-const { parseLocalizedNumber } = require('./sources');
+const { parseLocalizedNumber } = require('./numbers');
 
 function findPrice(text, labels) {
   for (const label of labels) {
-    const pattern = new RegExp(label + '\\\\s*[=:：]?\\\\s*([0-9۰-۹٠-٩,٬]+)', 'i');
+    const pattern = new RegExp(label + '\\s*[=:：]?\\s*([0-9۰-۹٠-٩,٬]+)', 'i');
     const match = text.match(pattern);
     if (match) {
       const toman = parseLocalizedNumber(match[1]);

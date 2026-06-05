@@ -1,18 +1,8 @@
 const { fetchTgjuPrices } = require('./tgju');
 const { fetchExternalSources } = require('./external-sources');
-const { fetchTelegramDollarSources } = require('./telegram-dollar');
+const { fetchBaleMarketSources, fetchTelegramMarketSources } = require('./channel-sources');
 const { fetchTradingViewData } = require('./tradingview');
-
-function parseLocalizedNumber(raw) {
-  const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
-  const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
-  const normalized = String(raw || '')
-    .replace(/[۰-۹]/g, (char) => String(persianDigits.indexOf(char)))
-    .replace(/[٠-٩]/g, (char) => String(arabicDigits.indexOf(char)))
-    .replace(/[,\s٬]/g, '');
-  const value = Number(normalized);
-  return Number.isFinite(value) && value > 0 ? value : null;
-}
+const { parseLocalizedNumber } = require('./numbers');
 
 function normalizeNearReference(value, reference) {
   if (!reference || !value) return value;
@@ -228,6 +218,16 @@ function buildAverages(samples, config) {
   return { ...result, diagnostics, alerts };
 }
 
+function addFetchedSources(samples, errors, fetched) {
+  for (const source of fetched) {
+    if (source && source.error) {
+      errors.push({ source: source.name, error: source.error });
+    } else if (source) {
+      samples.push(source);
+    }
+  }
+}
+
 async function fetchMarketSources(config) {
   const sourceNames = new Set(config.enabledSources);
   const samples = [];
@@ -278,13 +278,19 @@ async function fetchMarketSources(config) {
     }
   }
 
-  if (config.telegramDollarChannels.length) {
+  if (sourceNames.has('bale') && config.baleMarketChannels.length) {
     try {
-      samples.push(...await fetchTelegramDollarSources(config.telegramDollarChannels, {
-        maxAgeHours: config.telegramDollarMaxAgeHours
-      }));
+      addFetchedSources(samples, errors, await fetchBaleMarketSources(config.baleMarketChannels));
     } catch (error) {
-      errors.push({ source: 'telegram-dollar', error: error.message });
+      errors.push({ source: 'bale', error: error.message });
+    }
+  }
+
+  if (sourceNames.has('telegram') && config.telegramMarketChannels.length) {
+    try {
+      addFetchedSources(samples, errors, await fetchTelegramMarketSources(config.telegramMarketChannels));
+    } catch (error) {
+      errors.push({ source: 'telegram', error: error.message });
     }
   }
 

@@ -1,3 +1,5 @@
+const { parseLocalizedNumber } = require('./numbers');
+
 function stripHtml(input) {
   return input
     .replace(/<br\s*\/?>/g, '\n')
@@ -7,17 +9,6 @@ function stripHtml(input) {
     .replace(/&#39;/g, "'")
     .replace(/&quot;/g, '"')
     .trim();
-}
-
-function parseLocalizedNumber(raw) {
-  const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
-  const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
-  const normalized = String(raw || '')
-    .replace(/[۰-۹]/g, (char) => String(persianDigits.indexOf(char)))
-    .replace(/[٠-٩]/g, (char) => String(arabicDigits.indexOf(char)))
-    .replace(/[,\s٬]/g, '');
-  const value = Number(normalized);
-  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function extractMessages(html) {
