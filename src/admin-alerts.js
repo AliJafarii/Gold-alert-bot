@@ -34,7 +34,6 @@ function escapeHtml(value) {
 
 function formatAdminAlert(alerts) {
   return [
-    'آقا سید،',
     '<b>🛡 هشدار ادمین بات طلا</b>',
     '',
     ...alerts.map((alert) => '⚠️ ' + escapeHtml(alert.message)),

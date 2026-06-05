@@ -57,13 +57,12 @@ bot.command('check', async (ctx) => {
     const { message } = await runCheck({ force: true });
     await safeReply(ctx, message);
   } catch (error) {
-    await safeReply(ctx, 'آقا سید، خطا در بررسی قیمت: ' + error.message);
+    await safeReply(ctx, 'خطا در بررسی قیمت: ' + error.message);
   }
 });
 
 bot.command('settings', async (ctx) => {
   await safeReply(ctx, [
-    'آقا سید،',
     '<b>⚙️ تنظیمات فعلی</b>',
     '',
     '• نماد طلا: ' + config.tgjuGoldSymbol,
@@ -77,14 +76,14 @@ bot.command('settings', async (ctx) => {
 
 bot.command(['admin', 'sources'], async (ctx) => {
   if (!isAdminChat(ctx)) {
-    await safeReply(ctx, 'آقا سید، این فرمان فقط برای ادمین فعال است.');
+    await safeReply(ctx, 'این فرمان فقط برای ادمین فعال است.');
     return;
   }
   try {
     const snapshot = await getSnapshot();
     await safeReply(ctx, formatAdminPanel(snapshot));
   } catch (error) {
-    await safeReply(ctx, 'آقا سید، خطا در پنل ادمین: ' + error.message);
+    await safeReply(ctx, 'خطا در پنل ادمین: ' + error.message);
   }
 });
 
@@ -92,13 +91,13 @@ bot.command('source', async (ctx) => {
   const text = ctx.message.text.replace(/^\/source(@\w+)?\s*/i, '').trim();
   const source = parseMarketMessage(text, 'manual');
   if (!source) {
-    await safeReply(ctx, 'آقا سید، قیمت قابل تشخیص پیدا نکردم؛ متن پیام قیمت را بعد از فرمان source بفرست.');
+    await safeReply(ctx, 'قیمت قابل تشخیص پیدا نکردم؛ متن پیام قیمت را بعد از فرمان source بفرست.');
     return;
   }
   await mkdir(dirname(config.externalSourcesFile), { recursive: true });
   await writeFile(config.externalSourcesFile, JSON.stringify([source], null, 2));
   const { message } = await runCheck({ force: true });
-  await safeReply(ctx, 'آقا سید، منبع دستی ذخیره شد.\n\n' + message);
+  await safeReply(ctx, 'منبع دستی ذخیره شد.\n\n' + message);
 });
 
 bot.catch((error) => {
@@ -112,7 +111,7 @@ async function main() {
   });
   console.log('Gold Alert Bot started');
   if (config.sendStartupMessage) {
-    await sendConfiguredChat('آقا سید، بات هشدار حباب طلا روشن شد.');
+    await sendConfiguredChat('بات هشدار حباب طلا روشن شد.');
   }
   setInterval(() => {
     runCheck().catch((error) => {
