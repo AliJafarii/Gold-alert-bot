@@ -158,8 +158,16 @@ async function runScheduledNotifications() {
 
 bot.start(async (ctx) => {
   upsertUser(ctx.chat, isAdminChat(ctx));
-  const settings = upsertNotificationSettings(ctx.chat.id);
-  await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
+  upsertNotificationSettings(ctx.chat.id);
+  await safeReply(ctx, [
+    '<b>📊 بات اطلاع‌رسانی بازار طلا</b>',
+    '',
+    'از دکمه‌های پایین صفحه استفاده کن.',
+    '',
+    '📊 گزارش فوری: دریافت گزارش همین حالا',
+    '🔔 تنظیمات اطلاع‌رسانی: انتخاب بازه ارسال پیام',
+    '⚙️ تنظیمات: نمایش تنظیمات فعلی'
+  ].join('\n'));
 });
 
 bot.command('check', async (ctx) => {
