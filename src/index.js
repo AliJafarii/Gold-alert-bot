@@ -161,7 +161,7 @@ bot.start(async (ctx) => {
   upsertUser(ctx.chat, isAdminChat(ctx));
   upsertNotificationSettings(ctx.chat.id);
   await safeReply(ctx, [
-    '<b>📊 بات اطلاع‌رسانی بازار طلا</b>',
+    '<b>📊 نبض بازار</b>',
     '',
     'از دکمه‌های پایین صفحه استفاده کن.',
     '',
@@ -348,7 +348,7 @@ async function main() {
     upsertNotificationSettings(config.telegramChatId);
   }
   if (config.sendStartupMessage) {
-    await sendConfiguredChat('بات هشدار حباب طلا روشن شد.');
+    await sendConfiguredChat('نبض بازار روشن شد.');
   }
   setInterval(() => {
     runScheduledNotifications().catch((error) => {

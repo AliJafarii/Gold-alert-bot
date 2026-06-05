@@ -82,7 +82,7 @@ function formatAdminPanel(snapshot) {
   const sourceAlertLines = (snapshot.sourceAlerts || []).map((item) => '🚫 <b>حذف از میانگین:</b> ' + escapeHtml(item.message));
   const diagnosticsLines = formatSourceDiagnostics(snapshot);
   return [
-    '<b>🛡 پنل ادمین بات طلا</b>',
+    '<b>🛡 پنل ادمین نبض بازار</b>',
     '',
     '<b>وضعیت منابع</b>',
     sourceErrorLines.length || sourceAlertLines.length || diagnosticsLines.length
@@ -140,7 +140,7 @@ function formatReport(snapshot) {
   const technical = snapshot.technical || {};
 
   return [
-    '<b>📊 گزارش بازار طلا و ارز</b>',
+    '<b>📊 نبض بازار</b>',
     '🕒 زمان گزارش: ' + now,
     '',
     '<b>💵 دلار و اونس</b>',

@@ -34,7 +34,7 @@ function escapeHtml(value) {
 
 function formatAdminAlert(alerts) {
   return [
-    '<b>🛡 هشدار ادمین بات طلا</b>',
+    '<b>🛡 هشدار ادمین نبض بازار</b>',
     '',
     ...alerts.map((alert) => '⚠️ ' + escapeHtml(alert.message)),
     '',

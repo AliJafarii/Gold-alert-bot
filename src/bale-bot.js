@@ -199,7 +199,7 @@ async function handleText(ctx) {
   if (command === '/start') {
     upsertNotificationSettings(ctx.chat.id, undefined, PLATFORM);
     await reply(ctx, [
-      '<b>📊 بات اطلاع‌رسانی بازار طلا</b>',
+      '<b>📊 نبض بازار</b>',
       '',
       'از دکمه‌های پایین صفحه استفاده کن.',
       '',
@@ -324,7 +324,7 @@ async function startBaleBot() {
     upsertNotificationSettings(config.baleChatId, undefined, PLATFORM);
   }
   if (config.sendStartupMessage) {
-    await sendConfiguredChat('بات هشدار حباب طلا در بله روشن شد.').catch((error) => {
+    await sendConfiguredChat('نبض بازار در بله روشن شد.').catch((error) => {
       console.error('Bale startup message failed:', error);
     });
   }
