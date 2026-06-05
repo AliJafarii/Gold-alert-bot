@@ -16,9 +16,17 @@ function boolEnv(name, fallback) {
   return ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase());
 }
 
+function listEnv(name, fallback = '') {
+  return (process.env[name] || fallback)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 const config = {
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
+  adminChatIds: listEnv('ADMIN_CHAT_IDS', process.env.TELEGRAM_CHAT_ID || ''),
   tgjuGoldSymbol: process.env.TGJU_GOLD_SYMBOL || 'geram18',
   tgjuCoinSymbol: process.env.TGJU_COIN_SYMBOL || 'sekee',
   tgjuUsdSymbol: process.env.TGJU_USD_SYMBOL || 'price_dollar_rl',
@@ -38,6 +46,9 @@ const config = {
   sendStartupMessage: boolEnv('SEND_STARTUP_MESSAGE', true),
   alwaysSendReport: boolEnv('ALWAYS_SEND_REPORT', false),
   historyFile: process.env.HISTORY_FILE || '/root/gold-alert-bot/data/history.jsonl',
+  adminAlertStateFile: process.env.ADMIN_ALERT_STATE_FILE || '/root/gold-alert-bot/data/admin-alert-state.json',
+  sourceMaxAgeHours: numberEnv('SOURCE_MAX_AGE_HOURS', 12),
+  sourceOutlierPercent: numberEnv('SOURCE_OUTLIER_PERCENT', 6),
   externalSourcesFile: process.env.EXTERNAL_SOURCES_FILE || '/root/gold-alert-bot/data/external-sources.json'
   ,
   tradingViewTickers: process.env.TRADINGVIEW_TICKERS || 'TVC:GOLD,TVC:SILVER,OANDA:XAUUSD',

@@ -2,5 +2,6 @@
 .env.*
 node_modules/
 data/history.jsonl
+data/admin-alert-state.json
 npm-debug.log*
 .DS_Store

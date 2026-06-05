@@ -107,6 +107,127 @@ function average(values) {
   return clean.reduce((sum, value) => sum + value, 0) / clean.length;
 }
 
+function parseUpdatedAt(value) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : null;
+  const normalized = String(value).trim().replace(' ', 'T');
+  const date = new Date(normalized);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function median(values) {
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function metricLabel(metric) {
+  return {
+    gold18Price: 'طلای ۱۸ عیار',
+    coinPrice: 'سکه',
+    dollarToman: 'دلار',
+    ounceUsd: 'اونس جهانی طلا',
+    silverPrice: 'نقره ۹۹۹',
+    silverOunceUsd: 'اونس جهانی نقره'
+  }[metric] || metric;
+}
+
+function sourceValueKey(source, metric) {
+  return [source.name, metric, source[metric]].join(':');
+}
+
+function isSourceStale(source, maxAgeHours, now = Date.now()) {
+  const updatedAt = parseUpdatedAt(source.updatedAt);
+  if (!updatedAt || !maxAgeHours) return false;
+  const ageHours = (now - updatedAt.getTime()) / 36e5;
+  return ageHours > maxAgeHours ? ageHours : false;
+}
+
+function buildMetricAverage(samples, metric, config) {
+  const values = samples
+    .map((source) => ({ source, value: source[metric] }))
+    .filter((item) => Number.isFinite(item.value) && item.value > 0);
+
+  const alerts = [];
+  const accepted = [];
+  const staleFiltered = [];
+  const now = Date.now();
+
+  for (const item of values) {
+    const ageHours = isSourceStale(item.source, config.sourceMaxAgeHours, now);
+    if (ageHours) {
+      staleFiltered.push(item);
+      alerts.push({
+        key: 'stale:' + sourceValueKey(item.source, metric),
+        source: item.source.name,
+        metric,
+        metricLabel: metricLabel(metric),
+        value: item.value,
+        reason: 'stale',
+        message: 'منبع ' + item.source.name + ' برای ' + metricLabel(metric)
+          + ' قدیمی است و از میانگین حذف شد؛ سن داده حدود '
+          + Math.round(ageHours) + ' ساعت است.'
+      });
+      continue;
+    }
+    accepted.push(item);
+  }
+
+  if (accepted.length >= 3) {
+    const center = median(accepted.map((item) => item.value));
+    const threshold = config.sourceOutlierPercent / 100;
+    const filtered = [];
+    for (const item of accepted) {
+      const deviation = Math.abs(item.value - center) / center;
+      if (deviation > threshold) {
+        alerts.push({
+          key: 'outlier:' + sourceValueKey(item.source, metric),
+          source: item.source.name,
+          metric,
+          metricLabel: metricLabel(metric),
+          value: item.value,
+          reason: 'outlier',
+          deviationPercent: deviation * 100,
+          message: 'منبع ' + item.source.name + ' برای ' + metricLabel(metric)
+            + ' عدد پرت داده و از میانگین حذف شد؛ اختلاف با median حدود '
+            + (deviation * 100).toFixed(2) + '٪ است.'
+        });
+      } else {
+        filtered.push(item);
+      }
+    }
+    return {
+      value: average(filtered.map((item) => item.value)),
+      used: filtered,
+      excluded: alerts,
+      staleFiltered
+    };
+  }
+
+  return {
+    value: average(accepted.map((item) => item.value)),
+    used: accepted,
+    excluded: alerts,
+    staleFiltered
+  };
+}
+
+function buildAverages(samples, config) {
+  const metrics = ['gold18Price', 'coinPrice', 'dollarToman', 'ounceUsd', 'silverPrice', 'silverOunceUsd'];
+  const diagnostics = {};
+  const alerts = [];
+  const result = {};
+
+  for (const metric of metrics) {
+    const metricResult = buildMetricAverage(samples, metric, config);
+    result[metric] = metricResult.value;
+    diagnostics[metric] = metricResult;
+    alerts.push(...metricResult.excluded);
+  }
+
+  return { ...result, diagnostics, alerts };
+}
+
 async function fetchMarketSources(config) {
   const sourceNames = new Set(config.enabledSources);
   const samples = [];
@@ -167,17 +288,25 @@ async function fetchMarketSources(config) {
     }
   }
 
-  const gold18Price = average(samples.map((sample) => sample.gold18Price));
-  const coinPrice = average(samples.map((sample) => sample.coinPrice));
-  const dollarToman = average(samples.map((sample) => sample.dollarToman));
-  const ounceUsd = average(samples.map((sample) => sample.ounceUsd));
-  const silverPrice = average(samples.map((sample) => sample.silverPrice));
-  const silverOunceUsd = average(samples.map((sample) => sample.silverOunceUsd));
+  const averages = buildAverages(samples, config);
+  const { gold18Price, coinPrice, dollarToman, ounceUsd, silverPrice, silverOunceUsd } = averages;
   if (!gold18Price) throw new Error('No usable gold price sources. Errors: ' + JSON.stringify(errors));
   if (!coinPrice) throw new Error('No usable coin price sources. Errors: ' + JSON.stringify(errors));
   if (!dollarToman) throw new Error('No usable dollar price sources. Errors: ' + JSON.stringify(errors));
   if (!ounceUsd) throw new Error('No usable ounce price sources. Errors: ' + JSON.stringify(errors));
-  return { gold18Price, coinPrice, dollarToman, ounceUsd, silverPrice, silverOunceUsd, samples, errors, technical };
+  return {
+    gold18Price,
+    coinPrice,
+    dollarToman,
+    ounceUsd,
+    silverPrice,
+    silverOunceUsd,
+    samples,
+    errors,
+    sourceDiagnostics: averages.diagnostics,
+    sourceAlerts: averages.alerts,
+    technical
+  };
 }
 
 module.exports = { fetchMarketSources, parseLocalizedNumber, normalizeNearReference };

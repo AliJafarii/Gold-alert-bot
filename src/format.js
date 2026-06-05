@@ -58,6 +58,44 @@ function formatTechnicalCaution(technical) {
   return 'سیگنال جهانی طلا فعلاً تایید قوی خلاف حباب داخلی نمی‌دهد.';
 }
 
+function formatSourceDiagnostics(snapshot) {
+  const diagnostics = snapshot.sourceDiagnostics || {};
+  const lines = [];
+  for (const [metric, detail] of Object.entries(diagnostics)) {
+    const excluded = (detail.excluded || []).map((item) => item.source + ' / ' + item.metricLabel + ' / ' + item.reason);
+    if (excluded.length) {
+      lines.push('ـ ' + metric + ': ' + excluded.join('، '));
+    }
+  }
+  return lines;
+}
+
+function formatAdminPanel(snapshot) {
+  const sourceErrorLines = (snapshot.sourceErrors || []).map((item) => 'ـ خطا: ' + item.source + ' | ' + item.error);
+  const sourceAlertLines = (snapshot.sourceAlerts || []).map((item) => 'ـ حذف از میانگین: ' + item.message);
+  const diagnosticsLines = formatSourceDiagnostics(snapshot);
+  return [
+    'پنل ادمین بات طلا',
+    '',
+    'وضعیت منابع:',
+    sourceErrorLines.length || sourceAlertLines.length || diagnosticsLines.length
+      ? ''
+      : 'ـ همه منابع فعال فعلاً بدون خطا/حذف پرت هستند.',
+    ...sourceErrorLines,
+    ...sourceAlertLines,
+    ...diagnosticsLines,
+    '',
+    'میانگین‌های فعلی پس از فیلتر:',
+    'ـ دلار: ' + Math.round(snapshot.dollarToman).toLocaleString('fa-IR') + ' تومان',
+    'ـ اونس طلا: ' + formatUsd(snapshot.ounceUsd),
+    'ـ طلای ۱۸: ' + formatToman(snapshot.gold.price),
+    'ـ سکه: ' + formatToman(snapshot.coin.price),
+    '',
+    'تصمیم فعلی:',
+    'ـ ' + formatDecision(snapshot.decision, snapshot.technical)
+  ].filter((line) => line !== '').join('\n');
+}
+
 function formatDecision(decision, technical) {
   const caution = formatTechnicalCaution(technical);
   if (decision === 'buy') {
@@ -90,6 +128,7 @@ function formatReport(snapshot) {
     ? ''
     : 'تغییر ذخیره‌شده: ' + formatPercent(snapshot.trend.changePercent);
   const sourceErrorLines = (snapshot.sourceErrors || []).map((item) => 'ـ ' + item.source + ': ' + item.error);
+  const sourceAlertLines = (snapshot.sourceAlerts || []).map((item) => 'ـ ' + item.message);
   const technical = snapshot.technical || {};
 
   return [
@@ -122,6 +161,7 @@ function formatReport(snapshot) {
     'منابع قیمت:',
     ...sourceLines,
     ...(sourceErrorLines.length ? ['', 'خطاهای منبع:', ...sourceErrorLines] : []),
+    ...(sourceAlertLines.length ? ['', 'منابع حذف‌شده از میانگین:', ...sourceAlertLines] : []),
     '',
     'سیگنال جهانی TradingView:',
     formatTechnicalLine('طلا جهانی', technical.gold),
@@ -139,4 +179,4 @@ function formatReport(snapshot) {
   ].filter((line) => line !== '').join('\n');
 }
 
-module.exports = { formatReport };
+module.exports = { formatReport, formatAdminPanel };

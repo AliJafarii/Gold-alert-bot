@@ -58,6 +58,8 @@ async function getSnapshot() {
     decision,
     sources: market.samples,
     sourceErrors: market.errors,
+    sourceDiagnostics: market.sourceDiagnostics,
+    sourceAlerts: market.sourceAlerts,
     technical: market.technical,
     trend
   };

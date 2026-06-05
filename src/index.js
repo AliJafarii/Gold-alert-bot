@@ -2,8 +2,10 @@ const { Telegraf } = require('telegraf');
 const { mkdir, writeFile } = require('fs/promises');
 const { dirname } = require('path');
 const { config } = require('./config');
-const { buildReport, shouldAlert } = require('./monitor');
+const { buildReport, getSnapshot, shouldAlert } = require('./monitor');
 const { parseMarketMessage } = require('./message-parser');
+const { formatAdminPanel } = require('./format');
+const { formatAdminAlert, getNewAdminAlerts } = require('./admin-alerts');
 
 if (!config.telegramBotToken) {
   throw new Error('TELEGRAM_BOT_TOKEN is required');
@@ -21,8 +23,22 @@ async function sendConfiguredChat(text) {
   await bot.telegram.sendMessage(config.telegramChatId, text, { disable_web_page_preview: true });
 }
 
+async function sendAdminChats(text) {
+  for (const chatId of config.adminChatIds) {
+    await bot.telegram.sendMessage(chatId, text, { disable_web_page_preview: true });
+  }
+}
+
+function isAdminChat(ctx) {
+  return config.adminChatIds.includes(String(ctx.chat && ctx.chat.id));
+}
+
 async function runCheck({ force = false } = {}) {
   const { snapshot, message } = await buildReport();
+  const newAdminAlerts = await getNewAdminAlerts(snapshot);
+  if (newAdminAlerts.length) {
+    await sendAdminChats(formatAdminAlert(newAdminAlerts));
+  }
   if (force || config.alwaysSendReport || shouldAlert(snapshot, previousDecision)) {
     await sendConfiguredChat(message);
   }
@@ -55,6 +71,19 @@ bot.command('settings', async (ctx) => {
     'آستانه فروش: ' + config.sellBubblePercent + '٪',
     'فاصله بررسی: ' + config.checkIntervalMinutes + ' دقیقه'
   ].join('\n'));
+});
+
+bot.command(['admin', 'sources'], async (ctx) => {
+  if (!isAdminChat(ctx)) {
+    await safeReply(ctx, 'این فرمان فقط برای ادمین فعال است.');
+    return;
+  }
+  try {
+    const snapshot = await getSnapshot();
+    await safeReply(ctx, formatAdminPanel(snapshot));
+  } catch (error) {
+    await safeReply(ctx, 'خطا در پنل ادمین: ' + error.message);
+  }
 });
 
 bot.command('source', async (ctx) => {
