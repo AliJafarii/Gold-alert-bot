@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENV_FILE="/root/gold-alert-bot/.env"
-SERVICE_NAME="gold-alert-bot.service"
+ENV_FILE="/root/nabz-bazar/.env"
+SERVICE_NAME="nabz-bazar.service"
 
 read_env_value() {
   local key="$1"
@@ -32,7 +32,7 @@ disk_line="$(df -h / | awk 'NR==2 {print "استفاده " $5 "، آزاد " $4 
 memory_line="$(free -h | awk '/Mem:/ {print "استفاده " $3 " از " $2 "، آزاد " $7}')"
 swap_line="$(free -h | awk '/Swap:/ {print "استفاده " $3 " از " $2}')"
 warning_count="$(journalctl -u "$SERVICE_NAME" --since '7 days ago' -p warning..alert --no-pager 2>/dev/null | wc -l | tr -d ' ')"
-restart_count="$(journalctl -u "$SERVICE_NAME" --since '7 days ago' --no-pager 2>/dev/null | grep -c 'Started Gold Alert Telegram Bot' || true)"
+restart_count="$(journalctl -u "$SERVICE_NAME" --since '7 days ago' --no-pager 2>/dev/null | grep -c 'Started nabz-bazar.service\\|nabz bazar NestJS application started' || true)"
 security_line="$(systemd-analyze security "$SERVICE_NAME" --no-pager 2>/dev/null | awk '/Overall exposure/ {print $(NF-2) " " $(NF-1)}' || true)"
 
 if [[ "$service_state" == "active" ]]; then

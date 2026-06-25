@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { Injectable } = require('@nestjs/common');
 const { startNabzBazarBot } = require('../index');
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { fetchTgjuPrices } = require('./tgju');
 const { fetchExternalSources } = require('./external-sources');
 const { fetchBaleMarketSources, fetchTelegramMarketSources } = require('./channel-sources');
@@ -58,7 +59,7 @@ async function fetchTalaGoldSource(referenceGoldPrice) {
   let response;
   try {
     response = await fetch('https://www.tala.ir/price/18k/13', {
-      headers: { 'user-agent': 'gold-alert-bot/1.0 Mozilla/5.0' },
+      headers: { 'user-agent': 'nabz-bazar/1.0 Mozilla/5.0' },
       signal: controller.signal
     });
   } finally {
@@ -82,7 +83,7 @@ async function fetchTajnoghrehSilverSource() {
   let response;
   try {
     response = await fetch('https://tajnoghreh.com/silver-price/', {
-      headers: { 'user-agent': 'gold-alert-bot/1.0 Mozilla/5.0' },
+      headers: { 'user-agent': 'nabz-bazar/1.0 Mozilla/5.0' },
       signal: controller.signal
     });
   } finally {
@@ -186,7 +187,7 @@ async function fetchEstjtSource() {
     const timeout = setTimeout(() => controller.abort(), 4000);
     try {
       response = await fetch(url, {
-        headers: { 'user-agent': 'gold-alert-bot/1.0 Mozilla/5.0' },
+        headers: { 'user-agent': 'nabz-bazar/1.0 Mozilla/5.0' },
         signal: controller.signal
       });
       if (response.ok) break;
@@ -226,7 +227,7 @@ async function fetchHtmlSource(url, timeoutMs = 12000) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
-      headers: { 'user-agent': 'gold-alert-bot/1.0 Mozilla/5.0' },
+      headers: { 'user-agent': 'nabz-bazar/1.0 Mozilla/5.0' },
       signal: controller.signal
     });
     if (!response.ok) throw new Error('request failed: ' + response.status);

@@ -1,3 +1,4 @@
+// @ts-nocheck
 function calculateCoinBubble({ gold18Price, coinPrice, coinWeightGrams, coinPurity, goldPricePurity }) {
   const intrinsicValue = gold18Price * coinWeightGrams * (coinPurity / goldPricePurity);
   const bubbleValue = coinPrice - intrinsicValue;

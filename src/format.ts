@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { config } = require('./config');
 
 function toToman(value) {

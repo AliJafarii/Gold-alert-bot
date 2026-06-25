@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { parseLocalizedNumber } = require('./numbers');
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
@@ -265,7 +266,7 @@ async function fetchUserMessages(client, channel, limit, dialogEntities) {
 
 async function fetchPublicMessages(channel) {
   const response = await fetch('https://t.me/s/' + encodeURIComponent(channel), {
-    headers: { 'user-agent': 'gold-alert-bot/1.0 Mozilla/5.0' }
+    headers: { 'user-agent': 'nabz-bazar/1.0 Mozilla/5.0' }
   });
   if (!response.ok) throw new Error('Telegram public page failed: ' + response.status);
   const html = await response.text();

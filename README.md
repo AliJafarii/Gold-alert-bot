@@ -7,7 +7,7 @@
 1. فایل .env.example را به .env کپی کن.
 2. مقدار TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID را برای تلگرام پر کن.
 3. برای بله، مقدار BALE_BOT_TOKEN و BALE_CHAT_ID را هم پر کن.
-4. دستور `npm start` را اجرا کن. این دستور اپ NestJS را از `src/main.js` بالا می‌آورد.
+4. دستور `npm start` را اجرا کن. این دستور اپ NestJS را از `dist/main.js` بالا می‌آورد.
 
 ## تست بدون تلگرام
 

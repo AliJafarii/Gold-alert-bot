@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { mkdir, readFile, rename, writeFile } = require('fs/promises');
 const { dirname } = require('path');
 const { config } = require('./config');

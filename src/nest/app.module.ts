@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { Module } = require('@nestjs/common');
 const { NabzBazarService } = require('./nabz-bazar.service');
 

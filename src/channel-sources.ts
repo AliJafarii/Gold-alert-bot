@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { parseMarketMessage } = require('./message-parser');
 
 function stripHtml(input) {
@@ -142,7 +143,7 @@ async function fetchHtml(url) {
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch(url, {
-      headers: { 'user-agent': 'gold-alert-bot/1.0 Mozilla/5.0' },
+      headers: { 'user-agent': 'nabz-bazar/1.0 Mozilla/5.0' },
       signal: controller.signal
     });
     if (!response.ok) throw new Error('request failed: ' + response.status);

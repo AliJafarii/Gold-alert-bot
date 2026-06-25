@@ -1,3 +1,4 @@
+// @ts-nocheck
 const Database = require('better-sqlite3');
 const crypto = require('crypto');
 const { mkdirSync } = require('fs');

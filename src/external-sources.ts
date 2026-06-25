@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { readFile } = require('fs/promises');
 const { config } = require('./config');
 

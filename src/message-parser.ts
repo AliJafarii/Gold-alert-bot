@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { parseLocalizedNumber } = require('./numbers');
 
 function normalizePriceByUnit(value, unit, options = {}) {

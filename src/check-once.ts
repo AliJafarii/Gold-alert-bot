@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { buildReport } = require('./monitor');
 
 buildReport()

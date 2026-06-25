@@ -1,3 +1,4 @@
+// @ts-nocheck
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -70,7 +71,7 @@ function numberSetting(settings, key, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-const runtimeSettingsFile = process.env.RUNTIME_SETTINGS_FILE || '/root/gold-alert-bot/data/runtime-settings.json';
+const runtimeSettingsFile = process.env.RUNTIME_SETTINGS_FILE || '/root/nabz-bazar/data/runtime-settings.json';
 const runtimeSettings = readJson(runtimeSettingsFile, {});
 const telegramUserEnvFile = process.env.TELEGRAM_USER_ENV_FILE || '/root/telegram-keyword-bot/.env.production';
 
@@ -110,10 +111,10 @@ const config = {
   checkIntervalMinutes: numberEnv('CHECK_INTERVAL_MINUTES', 5),
   sendStartupMessage: boolEnv('SEND_STARTUP_MESSAGE', true),
   alwaysSendReport: boolEnv('ALWAYS_SEND_REPORT', false),
-  historyFile: process.env.HISTORY_FILE || '/root/gold-alert-bot/data/history.jsonl',
-  databaseFile: process.env.DATABASE_FILE || '/root/gold-alert-bot/data/gold-alert-bot.sqlite',
+  historyFile: process.env.HISTORY_FILE || '/root/nabz-bazar/data/history.jsonl',
+  databaseFile: process.env.DATABASE_FILE || '/root/nabz-bazar/data/nabz-bazar.sqlite',
   defaultNotificationIntervalMinutes: numberEnv('DEFAULT_NOTIFICATION_INTERVAL_MINUTES', 60),
-  adminAlertStateFile: process.env.ADMIN_ALERT_STATE_FILE || '/root/gold-alert-bot/data/admin-alert-state.json',
+  adminAlertStateFile: process.env.ADMIN_ALERT_STATE_FILE || '/root/nabz-bazar/data/admin-alert-state.json',
   sourceMaxAgeHours: numberEnv('SOURCE_MAX_AGE_HOURS', 12),
   sourceDropMaxAgeDays: numberEnv('SOURCE_DROP_MAX_AGE_DAYS', 30),
   snapshotCacheTtlSeconds: numberEnv('SNAPSHOT_CACHE_TTL_SECONDS', 90),
@@ -124,7 +125,7 @@ const config = {
     numberEnv('CHANNEL_SOURCE_MAX_AGE_HOURS', 2)
   ),
   sourceOutlierPercent: numberEnv('SOURCE_OUTLIER_PERCENT', 6),
-  externalSourcesFile: process.env.EXTERNAL_SOURCES_FILE || '/root/gold-alert-bot/data/external-sources.json',
+  externalSourcesFile: process.env.EXTERNAL_SOURCES_FILE || '/root/nabz-bazar/data/external-sources.json',
   runtimeSettingsFile,
   tradingViewTickers: process.env.TRADINGVIEW_TICKERS || 'TVC:GOLD,TVC:SILVER,OANDA:XAUUSD',
   tradingViewGoldTicker: process.env.TRADINGVIEW_GOLD_TICKER || 'TVC:GOLD',

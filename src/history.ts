@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { getDb } = require('./database');
 
 async function appendHistory(snapshot) {

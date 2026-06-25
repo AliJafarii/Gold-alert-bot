@@ -1,3 +1,4 @@
+// @ts-nocheck
 const TRADINGVIEW_SCAN_URL = 'https://scanner.tradingview.com/cfd/scan';
 const REQUEST_TIMEOUT_MS = 15000;
 
@@ -131,7 +132,7 @@ async function fetchTradingViewData(config) {
       headers: {
         accept: 'application/json',
         'content-type': 'application/json',
-        'user-agent': 'gold-alert-bot/1.0 Mozilla/5.0'
+        'user-agent': 'nabz-bazar/1.0 Mozilla/5.0'
       },
       body: JSON.stringify({
         symbols: { tickers, query: { types: [] } },

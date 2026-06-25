@@ -1,3 +1,4 @@
+// @ts-nocheck
 const TGJU_WIDGET_URL = 'https://api.tgju.org/v1/widget/tmp';
 const REQUEST_TIMEOUT_MS = 15000;
 
@@ -22,7 +23,7 @@ async function fetchTgjuPrices(symbols) {
       response = await fetch(url, {
         headers: {
           accept: 'application/json',
-          'user-agent': 'gold-alert-bot/1.0'
+          'user-agent': 'nabz-bazar/1.0'
         },
         signal: controller.signal
       });

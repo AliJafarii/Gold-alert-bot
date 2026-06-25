@@ -1,3 +1,4 @@
+// @ts-nocheck
 const HOUR_MS = 60 * 60 * 1000;
 
 function clamp(value, min, max) {

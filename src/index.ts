@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { Markup, Telegraf } = require('telegraf');
 const { mkdir, writeFile } = require('fs/promises');
 const { dirname } = require('path');

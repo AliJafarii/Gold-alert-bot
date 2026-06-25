@@ -1,3 +1,4 @@
+// @ts-nocheck
 function parseLocalizedNumber(raw) {
   const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
   const arabicDigits = '٠١٢٣٤٥٦٧٨٩';

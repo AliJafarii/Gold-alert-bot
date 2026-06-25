@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { calculateCoinBubble, calculateGoldBubble, calculateSilverBubble, classifyBubble } = require('./bubble');
 const { config } = require('./config');
 const { formatAnalysisReport, formatReport } = require('./format');

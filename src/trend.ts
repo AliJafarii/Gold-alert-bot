@@ -1,3 +1,4 @@
+// @ts-nocheck
 function analyzeTrend(rows) {
   if (rows.length < 2) {
     return { label: 'داده تاریخی کافی نداریم؛ باید چند نوبت قیمت جمع شود.', changePercent: null };

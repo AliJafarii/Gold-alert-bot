@@ -1,3 +1,4 @@
+// @ts-nocheck
 require('reflect-metadata');
 
 const { NestFactory } = require('@nestjs/core');
