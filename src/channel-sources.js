@@ -13,16 +13,63 @@ function stripHtml(input) {
 
 function hasEnoughMarketData(source, minImportantFields = 2) {
   if (!source) return false;
-  const importantFields = ['gold18Price', 'coinPrice', 'dollarToman', 'ounceUsd'];
+  const importantFields = ['gold18Price', 'coinPrice', 'dollarToman', 'tetherToman', 'ounceUsd'];
   return importantFields.filter((field) => Number.isFinite(source[field]) && source[field] > 0).length >= minImportantFields;
 }
 
 function shouldSkipMarketText(text, allowDollarOnly) {
-  if (/vpn|VPN|استارلینک|تبلیغ|VIP/i.test(text)) return true;
+  const hasMarketPrice = /طلا|سکه|دلار|تتر|اونس|نقره/.test(text) && /[0-9۰-۹٠-٩][0-9۰-۹٠-٩,٬]{2,}/.test(text);
+  if (/vpn|VPN|استارلینک|تبلیغ|VIP/i.test(text) && !hasMarketPrice) return true;
   if (!allowDollarOnly) return false;
   if (/هرات/.test(text)) return true;
   if (/فردایی|فردا/.test(text) && !/تهران/.test(text)) return true;
   return false;
+}
+
+function jalaliToGregorian(jy, jm, jd) {
+  jy += 1595;
+  let days = -355668 + (365 * jy) + (Math.floor(jy / 33) * 8) + Math.floor(((jy % 33) + 3) / 4) + jd;
+  days += jm < 7 ? (jm - 1) * 31 : ((jm - 7) * 30) + 186;
+  let gy = 400 * Math.floor(days / 146097);
+  days %= 146097;
+  if (days > 36524) {
+    gy += 100 * Math.floor(--days / 36524);
+    days %= 36524;
+    if (days >= 365) days += 1;
+  }
+  gy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) {
+    gy += Math.floor((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+  const gd = days + 1;
+  const salA = [0, 31, (gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  let gm = 0;
+  let day = gd;
+  for (gm = 1; gm <= 12 && day > salA[gm]; gm += 1) day -= salA[gm];
+  return { gy, gm, gd: day };
+}
+
+function parseMarketMessageDate(text) {
+  const dateMatch = String(text || '').match(/تاریخ\s*[:：]?\s*([0-9۰-۹٠-٩]{4})[\/.-]([0-9۰-۹٠-٩]{1,2})[\/.-]([0-9۰-۹٠-٩]{1,2})/);
+  const timeMatch = String(text || '').match(/ساعت\s*[:：]?\s*([0-9۰-۹٠-٩]{1,2})[:：]([0-9۰-۹٠-٩]{1,2})/);
+  if (!dateMatch || !timeMatch) return null;
+  const parseDateNumber = (value) => {
+    const parsed = Number(String(value || '')
+      .replace(/[۰-۹]/g, (char) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(char)))
+      .replace(/[٠-٩]/g, (char) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(char))));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const year = parseDateNumber(dateMatch[1]);
+  const month = parseDateNumber(dateMatch[2]);
+  const day = parseDateNumber(dateMatch[3]);
+  const hour = parseDateNumber(timeMatch[1]);
+  const minute = parseDateNumber(timeMatch[2]);
+  if (!year || !month || !day || hour === null || minute === null) return null;
+  const gregorian = jalaliToGregorian(year, month, day);
+  const date = new Date(Date.UTC(gregorian.gy, gregorian.gm - 1, gregorian.gd, hour - 3, minute - 30, 0));
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 function parseLatestMarketSource(messages, name, options = {}) {
@@ -30,7 +77,11 @@ function parseLatestMarketSource(messages, name, options = {}) {
   const allowDollarOnly = minImportantFields <= 1;
   const sorted = messages
     .filter((message) => message && message.text)
-    .sort((a, b) => Date.parse(b.datetime || 0) - Date.parse(a.datetime || 0));
+    .map((message) => ({
+      ...message,
+      marketDatetime: parseMarketMessageDate(message.text) || message.datetime
+    }))
+    .sort((a, b) => Date.parse(b.marketDatetime || 0) - Date.parse(a.marketDatetime || 0));
 
   for (const message of sorted) {
     if (shouldSkipMarketText(message.text, allowDollarOnly)) continue;
@@ -38,7 +89,7 @@ function parseLatestMarketSource(messages, name, options = {}) {
     if (!hasEnoughMarketData(source, minImportantFields)) continue;
     return {
       ...source,
-      updatedAt: message.datetime || source.updatedAt,
+      updatedAt: message.marketDatetime || source.updatedAt,
       sourceMessageText: message.text.slice(0, 500)
     };
   }
@@ -151,6 +202,7 @@ module.exports = {
   stripHtml,
   extractTelegramMessages,
   extractBaleMessages,
+  parseMarketMessageDate,
   fetchTelegramMarketSources,
   fetchBaleMarketSources
 };

@@ -3,6 +3,8 @@
 node_modules/
 data/history.jsonl
 data/admin-alert-state.json
+data/admin-alert-state.json.broken-*
+data/runtime-settings.json
 data/*.sqlite
 data/*.sqlite-*
 npm-debug.log*

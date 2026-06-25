@@ -1,18 +1,24 @@
 {
-  "name": "gold-alert-bot",
+  "name": "nabz-bazar",
   "version": "1.0.0",
-  "description": "Telegram bot that monitors Iranian gold/coin bubble and sends alerts.",
-  "main": "src/index.js",
+  "description": "nabz bazar Telegram and Bale bot for Iranian market prices and alerts.",
+  "main": "src/main.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node src/main.js",
+    "start:legacy": "node src/index.js",
     "check": "node src/check-once.js"
   },
   "keywords": [],
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
+    "@nestjs/common": "^11.1.27",
+    "@nestjs/core": "^11.1.27",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^17.4.2",
-    "telegraf": "^4.16.3"
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "telegraf": "^4.16.3",
+    "telegram": "^2.26.22"
   }
 }

@@ -1,5 +1,5 @@
 [Unit]
-Description=Gold Alert Telegram Bot
+Description=nabz bazar bot
 After=network-online.target
 Wants=network-online.target
 
@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/root/gold-alert-bot
 EnvironmentFile=/root/gold-alert-bot/.env
-ExecStart=/usr/bin/node /root/gold-alert-bot/src/index.js
+ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10
 

@@ -1,14 +1,19 @@
 const { mkdir, writeFile } = require('fs/promises');
 const { dirname } = require('path');
-const { config } = require('./config');
-const { buildReport, getSnapshot } = require('./monitor');
+const { config, setRuntimeConfig } = require('./config');
+const { buildAnalysisReport, buildReport, getSnapshot } = require('./monitor');
 const { parseMarketMessage } = require('./message-parser');
-const { formatAdminPanel } = require('./format');
+const { formatAdminPanel, formatSourceAuditReport, formatBotLinks } = require('./format');
 const { formatAdminAlert, getNewAdminAlerts } = require('./admin-alerts');
 const {
+  createAccountLinkCode,
+  getProfile,
+  getLatestSourceAudit,
+  linkAccountWithCode,
   publicChatId,
   listDueNotificationSettings,
   markNotificationSent,
+  setProfilePhone,
   setNotificationEnabled,
   setNotificationInterval,
   upsertNotificationSettings,
@@ -18,6 +23,9 @@ const {
 const PLATFORM = 'bale';
 const messageOptions = { disable_web_page_preview: true };
 const pendingCustomIntervals = new Set();
+const pendingPhoneLinks = new Set();
+const pendingCodeLinks = new Set();
+let balePollingStopped = true;
 
 function isEnabled() {
   return Boolean(config.baleBotToken);
@@ -29,10 +37,25 @@ function apiUrl(method) {
 
 function mainKeyboard(isAdmin = false) {
   const rows = [
-    [{ text: '📊 گزارش فوری' }, { text: '🔔 تنظیمات اطلاع‌رسانی' }],
+    [{ text: '📊 گزارش فوری' }, { text: '🧠 تحلیل بازار' }],
+    [{ text: '🔔 تنظیمات اطلاع‌رسانی' }, { text: '👤 پروفایل' }],
+    [{ text: '🔗 اتصال اکانت‌ها' }],
     [{ text: '⚙️ تنظیمات' }]
   ];
-  if (isAdmin) rows[1].push({ text: '🛡 پنل ادمین' });
+  if (isAdmin) rows[3].push({ text: '🛡 پنل ادمین' }, { text: '🧪 audit پارسیان' });
+  return { keyboard: rows, resize_keyboard: true };
+}
+
+function phoneKeyboard(isAdmin = false) {
+  const rows = [
+    [{ text: '📱 ارسال شماره موبایل', request_contact: true }],
+    [{ text: '🔢 دریافت کد اتصال' }, { text: '⌨️ وارد کردن کد' }],
+    [{ text: '📊 گزارش فوری' }, { text: '🧠 تحلیل بازار' }],
+    [{ text: '🔔 تنظیمات اطلاع‌رسانی' }, { text: '👤 پروفایل' }],
+    [{ text: '🔗 اتصال اکانت‌ها' }],
+    [{ text: '⚙️ تنظیمات' }]
+  ];
+  if (isAdmin) rows[5].push({ text: '🛡 پنل ادمین' }, { text: '🧪 audit پارسیان' });
   return { keyboard: rows, resize_keyboard: true };
 }
 
@@ -94,6 +117,22 @@ async function reply(ctx, text, extra = {}) {
   });
 }
 
+async function replyLong(ctx, text, extra = {}) {
+  const maxLength = 3500;
+  const lines = String(text || '').split('\n');
+  let chunk = '';
+  for (const line of lines) {
+    const next = chunk ? chunk + '\n' + line : line;
+    if (next.length > maxLength && chunk) {
+      await reply(ctx, chunk, extra);
+      chunk = line;
+    } else {
+      chunk = next;
+    }
+  }
+  if (chunk) await reply(ctx, chunk, extra);
+}
+
 function intervalLabel(minutes) {
   if (minutes < 60) return minutes.toLocaleString('fa-IR') + ' دقیقه';
   if (minutes % 60 === 0) return (minutes / 60).toLocaleString('fa-IR') + ' ساعت';
@@ -122,6 +161,148 @@ function formatNotificationSettings(settings) {
   ].join('\n');
 }
 
+function formatProfileText(profileData) {
+  const profile = profileData.profile || {};
+  const settings = profileData.settings || {};
+  const accounts = profileData.accounts || [];
+  const payments = profileData.payments || [];
+  const accountLines = accounts.length
+    ? accounts.map((account) => '• ' + (account.platform === 'bale' ? 'بله' : 'تلگرام') + ': ' + (account.username ? '@' + account.username : account.platform_chat_id))
+    : ['• هنوز اکانتی ثبت نشده است.'];
+  const paymentLines = payments.length
+    ? payments.map((payment) => '• ' + [payment.amount, payment.currency, payment.status, payment.created_at].filter(Boolean).join(' | '))
+    : ['• پرداختی ثبت نشده است.'];
+  return [
+    '<b>👤 پروفایل</b>',
+    '',
+    'شناسه پروفایل: ' + Number(profile.id || 0).toLocaleString('fa-IR'),
+    'پلن فعلی: ' + (profile.plan === 'free' ? 'رایگان' : profile.plan),
+    'وضعیت نوتیف: ' + (settings.enabled ? 'روشن' : 'خاموش'),
+    'بازه نوتیف: ' + intervalLabel(settings.interval_minutes || config.defaultNotificationIntervalMinutes),
+    'شماره تاییدشده: ' + (profile.phone ? profile.phone : 'ثبت نشده'),
+    '',
+    '<b>اکانت‌های متصل</b>',
+    ...accountLines,
+    '',
+    '<b>تاریخچه پرداخت</b>',
+    ...paymentLines,
+    '',
+    'برای اتصال بله و تلگرام، دکمه «🔗 اتصال اکانت‌ها» را بزن و یکی از دو روش کد یا شماره موبایل را انتخاب کن.'
+  ].join('\n');
+}
+
+function introText() {
+  return [
+    '<b>📊 نبض بازار</b>',
+    'ربات پایش قیمت طلا، سکه، دلار و نقره با گزارش دوره‌ای و تحلیل جداگانه بازار.',
+    '',
+    ...formatBotLinks(PLATFORM),
+    '',
+    '<b>از دکمه‌های پایین صفحه استفاده کن</b>',
+    '📊 گزارش فوری: قیمت‌ها و منابع',
+    '🧠 تحلیل بازار: خرید پله‌ای/نگهداری/کاهش ریسک به‌صورت جدا',
+    '🔔 تنظیمات اطلاع‌رسانی: انتخاب بازه پیام',
+    '👤 پروفایل: پلن، اکانت‌های متصل و پرداخت‌ها',
+    '',
+    'برای اتصال بله و تلگرام، دکمه «🔗 اتصال اکانت‌ها» را بزن. هم اتصال با کد فعال است، هم اتصال با شماره موبایل.'
+  ].join('\n');
+}
+
+async function sendAccountLinkMenu(ctx) {
+  await reply(ctx, [
+    '<b>🔗 اتصال تلگرام و بله</b>',
+    '',
+    'برای یکی‌کردن پروفایل و تنظیمات نوتیف، یکی از این دکمه‌ها را بزن:',
+    '',
+    '📱 ثبت شماره موبایل',
+    '🔢 دریافت کد اتصال',
+    '⌨️ وارد کردن کد',
+    '',
+    'اگر نمی‌خواهی شماره موبایل بدهی، روش کد را انتخاب کن.'
+  ].join('\n'), {
+    reply_markup: {
+      keyboard: [
+        [{ text: '📱 ثبت شماره موبایل' }],
+        [{ text: '🔢 دریافت کد اتصال' }, { text: '⌨️ وارد کردن کد' }],
+        ...mainKeyboard(isAdminChat(ctx.chat.id)).keyboard
+      ],
+      resize_keyboard: true
+    }
+  });
+}
+
+async function sendPhonePrompt(ctx) {
+  pendingPhoneLinks.add(String(ctx.chat.id));
+  await reply(ctx, [
+    '<b>📱 اتصال با شماره موبایل</b>',
+    '',
+    'شماره موبایل فقط برای لینک‌کردن پروفایل تلگرام و بله استفاده می‌شود.',
+    'اگر همین شماره را در بات دیگر هم تایید کنی، دو اکانت یکی می‌شوند.',
+    '',
+    'دکمه ارسال شماره را بزن یا شماره را همینجا بنویس.',
+    'اگر نمی‌خواهی شماره بدهی، از بخش اتصال، روش کد را انتخاب کن.'
+  ].join('\n'), {
+    reply_markup: phoneKeyboard(isAdminChat(ctx.chat.id))
+  });
+}
+
+async function sendCreatedLinkCode(ctx) {
+  pendingCodeLinks.delete(String(ctx.chat.id));
+  const link = createAccountLinkCode(ctx.chat.id, PLATFORM);
+  await reply(ctx, [
+    '<b>🔢 کد اتصال</b>',
+    '',
+    'این کد تا ۱۵ دقیقه دیگر معتبر است:',
+    link.code,
+    '',
+    'در بات دیگر دکمه «⌨️ وارد کردن کد» را بزن و همین عدد را بفرست.'
+  ].join('\n'));
+}
+
+async function sendCodePrompt(ctx) {
+  pendingCodeLinks.add(String(ctx.chat.id));
+  await reply(ctx, [
+    '<b>⌨️ وارد کردن کد اتصال</b>',
+    '',
+    'کد ۶ رقمی‌ای که از بات دیگر گرفتی را همینجا بفرست.',
+    'اگر کد نداری، اول «🔢 دریافت کد اتصال» را بزن.'
+  ].join('\n'));
+}
+
+async function handleCodeLink(ctx, code) {
+  const result = linkAccountWithCode(ctx.chat.id, code, PLATFORM);
+  pendingCodeLinks.delete(String(ctx.chat.id));
+  if (!result.ok) {
+    await reply(ctx, result.reason === 'expired'
+      ? 'کد اتصال منقضی شده است. از دکمه «🔢 دریافت کد اتصال» یک کد تازه بگیر.'
+      : 'کد اتصال معتبر نیست. اگر کد نداری، از دکمه «🔢 دریافت کد اتصال» استفاده کن.');
+    return;
+  }
+  await reply(ctx, 'اکانت‌ها متصل شدند. از این به بعد تنظیمات نوتیف و پروفایل بین تلگرام و بله مشترک است.\n\n' + formatProfileText(getProfile(ctx.chat.id, PLATFORM)));
+}
+
+async function handlePhoneLink(ctx, rawPhone) {
+  const result = setProfilePhone(ctx.chat.id, rawPhone, PLATFORM);
+  pendingPhoneLinks.delete(String(ctx.chat.id));
+  if (!result.ok) {
+    await reply(ctx, [
+      'شماره موبایل معتبر نبود.',
+      'برای اتصال با شماره، باید شماره یکسان را در هر دو بات تایید کنی.',
+      'اگر نمی‌خواهی شماره بدهی، از دکمه «🔢 دریافت کد اتصال» استفاده کن.'
+    ].join('\n'));
+    return;
+  }
+  if (result.linked) {
+    await reply(ctx, 'اکانت‌ها با شماره موبایل متصل شدند. تنظیمات نوتیف و پروفایل از این به بعد مشترک است.\n\n' + formatProfileText(getProfile(ctx.chat.id, PLATFORM)));
+    return;
+  }
+  await reply(ctx, [
+    'شماره موبایل ثبت شد.',
+    'برای تکمیل اتصال، در بات دیگر هم دکمه «📱 ثبت شماره موبایل» را بزن و همین شماره را تایید کن.',
+    'تا وقتی شماره در هر دو طرف تایید نشود، اکانت‌ها با روش شماره موبایل لینک نمی‌شوند. روش کد ۶ رقمی هم همچنان فعال است.'
+  ].join('\n'));
+}
+
 function parseNotifyMinutes(text) {
   const raw = String(text || '').trim().toLowerCase();
   if (!raw) return null;
@@ -136,8 +317,26 @@ function parseNotifyMinutes(text) {
   return Number.isInteger(minutes) && minutes > 0 ? minutes : null;
 }
 
+function parseHours(text) {
+  const match = String(text || '').match(/[0-9۰-۹٠-٩]+(?:[.,][0-9۰-۹٠-٩]+)?/);
+  if (!match) return null;
+  const normalized = match[0]
+    .replace(/[۰-۹]/g, (char) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(char)))
+    .replace(/[٠-٩]/g, (char) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(char)))
+    .replace(',', '.');
+  const hours = Number(normalized);
+  return Number.isFinite(hours) && hours > 0 ? hours : null;
+}
+
 async function collectReport() {
-  const { snapshot, message } = await buildReport();
+  const { snapshot, message } = await buildReport('bale');
+  const newAdminAlerts = await getNewAdminAlerts(snapshot);
+  if (newAdminAlerts.length) await sendAdminChats(formatAdminAlert(newAdminAlerts));
+  return { snapshot, message };
+}
+
+async function collectAnalysis() {
+  const { snapshot, message } = await buildAnalysisReport('bale');
   const newAdminAlerts = await getNewAdminAlerts(snapshot);
   if (newAdminAlerts.length) await sendAdminChats(formatAdminAlert(newAdminAlerts));
   return { snapshot, message };
@@ -158,6 +357,7 @@ async function sendSettings(ctx) {
     '• منابع فعال: ' + config.enabledSources.join(', '),
     '• آستانه خرید: ' + config.buyBubblePercent + '٪',
     '• آستانه فروش: ' + config.sellBubblePercent + '٪',
+    '• سقف تازگی تلگرام و بله: ' + config.channelSourceMaxAgeHours + ' ساعت',
     '• فاصله جمع‌آوری داخلی: ' + config.checkIntervalMinutes + ' دقیقه'
   ].join('\n'));
 }
@@ -173,6 +373,9 @@ async function runScheduledNotifications() {
       await sendChat(chatId, message);
       markNotificationSent(chatId, sentAt, PLATFORM);
     } catch (error) {
+      if (/forbidden|blocked/i.test(String(error && error.message || error))) {
+        setNotificationEnabled(chatId, false, PLATFORM);
+      }
       console.error('Bale scheduled notification failed for chat ' + chatId + ':', error);
     }
   }
@@ -180,8 +383,37 @@ async function runScheduledNotifications() {
 
 async function handleText(ctx) {
   upsertUser(ctx.chat, isAdminChat(ctx.chat.id), PLATFORM);
+  if (ctx.contact) {
+    await handlePhoneLink(ctx, ctx.contact.phone_number || ctx.contact.phone || '');
+    return;
+  }
   const text = String(ctx.text || '').trim();
   const command = text.replace(/@\w+/, '').split(/\s+/)[0].toLowerCase();
+
+  if (text === '🔗 اتصال اکانت‌ها') {
+    pendingPhoneLinks.delete(String(ctx.chat.id));
+    pendingCodeLinks.delete(String(ctx.chat.id));
+    await sendAccountLinkMenu(ctx);
+    return;
+  }
+
+  if (text === '📱 ثبت شماره موبایل') {
+    pendingCodeLinks.delete(String(ctx.chat.id));
+    await sendPhonePrompt(ctx);
+    return;
+  }
+
+  if (text === '🔢 دریافت کد اتصال') {
+    pendingPhoneLinks.delete(String(ctx.chat.id));
+    await sendCreatedLinkCode(ctx);
+    return;
+  }
+
+  if (text === '⌨️ وارد کردن کد') {
+    pendingPhoneLinks.delete(String(ctx.chat.id));
+    await sendCodePrompt(ctx);
+    return;
+  }
 
   if (pendingCustomIntervals.has(String(ctx.chat.id))) {
     const minutes = parseNotifyMinutes(text);
@@ -196,17 +428,23 @@ async function handleText(ctx) {
     return;
   }
 
+  if (pendingPhoneLinks.has(String(ctx.chat.id))) {
+    await handlePhoneLink(ctx, text);
+    return;
+  }
+
+  if (pendingCodeLinks.has(String(ctx.chat.id))) {
+    if (!/^\d{6}$/.test(text)) {
+      await reply(ctx, 'کد باید دقیقاً ۶ رقم باشد. اگر کد نداری، دکمه «🔢 دریافت کد اتصال» را بزن.');
+      return;
+    }
+    await handleCodeLink(ctx, text);
+    return;
+  }
+
   if (command === '/start') {
     upsertNotificationSettings(ctx.chat.id, undefined, PLATFORM);
-    await reply(ctx, [
-      '<b>📊 نبض بازار</b>',
-      '',
-      'از دکمه‌های پایین صفحه استفاده کن.',
-      '',
-      '📊 گزارش فوری: دریافت گزارش همین حالا',
-      '🔔 تنظیمات اطلاع‌رسانی: انتخاب بازه ارسال پیام',
-      '⚙️ تنظیمات: نمایش تنظیمات فعلی'
-    ].join('\n'));
+    await reply(ctx, introText());
     return;
   }
 
@@ -218,6 +456,48 @@ async function handleText(ctx) {
     } catch (error) {
       await reply(ctx, 'خطا در بررسی قیمت: ' + error.message);
     }
+    return;
+  }
+
+  if (command === '/analysis' || command === '/analyze' || text === '🧠 تحلیل بازار') {
+    try {
+      upsertNotificationSettings(ctx.chat.id, undefined, PLATFORM);
+      const { message } = await collectAnalysis();
+      await reply(ctx, message);
+    } catch (error) {
+      await reply(ctx, 'خطا در تحلیل بازار: ' + error.message);
+    }
+    return;
+  }
+
+  if (command === '/profile' || command === '/account' || text === '👤 پروفایل') {
+    upsertNotificationSettings(ctx.chat.id, undefined, PLATFORM);
+    await reply(ctx, formatProfileText(getProfile(ctx.chat.id, PLATFORM)));
+    return;
+  }
+
+  if (command === '/link') {
+    const arg = text.replace(/^\/link(@\w+)?\s*/i, '').trim();
+    if (arg) {
+      await handleCodeLink(ctx, arg);
+      return;
+    }
+    await sendAccountLinkMenu(ctx);
+    return;
+  }
+
+  if (command === '/phone') {
+    const arg = text.replace(/^\/phone(@\w+)?\s*/i, '').trim();
+    if (arg) {
+      await handlePhoneLink(ctx, arg);
+      return;
+    }
+    await sendPhonePrompt(ctx);
+    return;
+  }
+
+  if (/^\d{6}$/.test(text)) {
+    await handleCodeLink(ctx, text);
     return;
   }
 
@@ -275,6 +555,49 @@ async function handleText(ctx) {
     return;
   }
 
+  if (command === '/audit' || command === '/parsian_audit' || command === '/parsianaudit') {
+    if (!isAdminChat(ctx.chat.id)) {
+      await reply(ctx, 'این بخش فقط برای ادمین فعال است.');
+      return;
+    }
+    try {
+      await replyLong(ctx, formatSourceAuditReport(getLatestSourceAudit('telegram-dollar-ParsianSarafi')));
+    } catch (error) {
+      await reply(ctx, 'خطا در audit پارسیان: ' + error.message);
+    }
+    return;
+  }
+
+  if (text === '🧪 audit پارسیان') {
+    if (!isAdminChat(ctx.chat.id)) {
+      await reply(ctx, 'این بخش فقط برای ادمین فعال است.');
+      return;
+    }
+    try {
+      await replyLong(ctx, formatSourceAuditReport(getLatestSourceAudit('telegram-dollar-ParsianSarafi')));
+    } catch (error) {
+      await reply(ctx, 'خطا در audit پارسیان: ' + error.message);
+    }
+    return;
+  }
+
+  if (command === '/channel_age' || command === '/channelage') {
+    if (!isAdminChat(ctx.chat.id)) {
+      await reply(ctx, 'این فرمان فقط برای ادمین فعال است.');
+      return;
+    }
+    const arg = text.replace(/^\/(?:channel_age|channelage)(@\w+)?\s*/i, '').trim();
+    const hours = parseHours(arg);
+    if (!Number.isFinite(hours) || hours < 0.25 || hours > 48) {
+      await reply(ctx, 'عدد باید بین ۰٫۲۵ تا ۴۸ ساعت باشد. نمونه: /channel_age 2');
+      return;
+    }
+    setRuntimeConfig('channelSourceMaxAgeHours', hours);
+    const snapshot = await getSnapshot();
+    await reply(ctx, 'سقف تازگی تلگرام و بله روی ' + hours.toLocaleString('fa-IR') + ' ساعت تنظیم شد.\n\n' + formatAdminPanel(snapshot));
+    return;
+  }
+
   if (command === '/source') {
     const sourceText = text.replace(/^\/source(@\w+)?\s*/i, '').trim();
     const source = parseMarketMessage(sourceText, 'manual-bale');
@@ -291,17 +614,18 @@ async function handleText(ctx) {
 
 function updateToContext(update) {
   const message = update && update.message;
-  if (!message || !message.chat || !message.text) return null;
+  if (!message || !message.chat || (!message.text && !message.contact)) return null;
   return {
     chat: message.chat,
-    text: message.text,
+    text: message.text || '',
+    contact: message.contact,
     message
   };
 }
 
 async function pollUpdates() {
   let offset = 0;
-  while (isEnabled()) {
+  while (isEnabled() && !balePollingStopped) {
     try {
       const updates = await callBale('getUpdates', { offset, timeout: 30 });
       for (const update of updates || []) {
@@ -319,16 +643,13 @@ async function pollUpdates() {
 
 async function startBaleBot() {
   if (!isEnabled()) return null;
-  if (config.baleChatId) {
-    upsertUser(config.baleChatId, config.baleAdminChatIds.includes(String(config.baleChatId)), PLATFORM);
-    upsertNotificationSettings(config.baleChatId, undefined, PLATFORM);
-  }
+  balePollingStopped = false;
   if (config.sendStartupMessage) {
     await sendConfiguredChat('نبض بازار در بله روشن شد.').catch((error) => {
       console.error('Bale startup message failed:', error);
     });
   }
-  setInterval(() => {
+  const notificationInterval = setInterval(() => {
     runScheduledNotifications().catch((error) => {
       console.error('Bale scheduled check failed:', error);
     });
@@ -337,8 +658,13 @@ async function startBaleBot() {
     console.error('Initial Bale check failed:', error);
   });
   pollUpdates();
-  console.log('Gold Alert Bale bot started');
-  return { stop: () => {} };
+  console.log('nabz bazar Bale bot started');
+  return {
+    stop: () => {
+      balePollingStopped = true;
+      clearInterval(notificationInterval);
+    }
+  };
 }
 
 module.exports = { startBaleBot };
