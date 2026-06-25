@@ -8,18 +8,37 @@ const { formatAdminPanel, formatSourceAuditReport, formatBotLinks } = require('.
 const { formatAdminAlert, getNewAdminAlerts } = require('./admin-alerts');
 const {
   createAccountLinkCode,
+  createPriceAlert,
+  createScheduledReport,
   getProfile,
   getLatestSourceAudit,
   linkAccountWithCode,
   publicChatId,
+  listPriceAlerts,
+  listScheduledReports,
   listDueNotificationSettings,
   markNotificationSent,
+  recordPayment,
   setProfilePhone,
   setNotificationEnabled,
   setNotificationInterval,
+  setPriceAlertActive,
+  setScheduledReportActive,
+  setSubscription,
   upsertNotificationSettings,
   upsertUser
 } = require('./database');
+const {
+  formatAlertList,
+  formatLimitText,
+  formatPlansText,
+  formatPriceAlertCreated,
+  formatReportList,
+  formatScheduledReportCreated,
+  formatSubscriptionText,
+  parsePriceAlertCommand,
+  parseScheduledReportCommand
+} = require('./mvp');
 
 const PLATFORM = 'bale';
 const messageOptions = { disable_web_page_preview: true };
@@ -38,12 +57,13 @@ function apiUrl(method) {
 
 function mainKeyboard(isAdmin = false) {
   const rows = [
-    [{ text: '📊 گزارش فوری' }, { text: '🧠 تحلیل بازار' }],
+    [{ text: '📊 قیمت لحظه‌ای' }, { text: '🎯 هشدارهای من' }],
+    [{ text: '🕘 گزارش‌های من' }, { text: '💳 اشتراک من' }],
     [{ text: '🔔 تنظیمات اطلاع‌رسانی' }, { text: '👤 پروفایل' }],
     [{ text: '🔗 اتصال اکانت‌ها' }],
     [{ text: '⚙️ تنظیمات' }]
   ];
-  if (isAdmin) rows[3].push({ text: '🛡 پنل ادمین' }, { text: '🧪 audit پارسیان' });
+  if (isAdmin) rows[4].push({ text: '🛡 پنل ادمین' }, { text: '🧪 audit پارسیان' });
   return { keyboard: rows, resize_keyboard: true };
 }
 
@@ -51,12 +71,13 @@ function phoneKeyboard(isAdmin = false) {
   const rows = [
     [{ text: '📱 ارسال شماره موبایل', request_contact: true }],
     [{ text: '🔢 دریافت کد اتصال' }, { text: '⌨️ وارد کردن کد' }],
-    [{ text: '📊 گزارش فوری' }, { text: '🧠 تحلیل بازار' }],
+    [{ text: '📊 قیمت لحظه‌ای' }, { text: '🎯 هشدارهای من' }],
+    [{ text: '🕘 گزارش‌های من' }, { text: '💳 اشتراک من' }],
     [{ text: '🔔 تنظیمات اطلاع‌رسانی' }, { text: '👤 پروفایل' }],
     [{ text: '🔗 اتصال اکانت‌ها' }],
     [{ text: '⚙️ تنظیمات' }]
   ];
-  if (isAdmin) rows[5].push({ text: '🛡 پنل ادمین' }, { text: '🧪 audit پارسیان' });
+  if (isAdmin) rows[6].push({ text: '🛡 پنل ادمین' }, { text: '🧪 audit پارسیان' });
   return { keyboard: rows, resize_keyboard: true };
 }
 
@@ -94,6 +115,11 @@ async function sendChat(chatId, text, extra = {}) {
     ...messageOptions,
     ...extra
   });
+}
+
+async function sendBaleDirect(chatId, text) {
+  if (!isEnabled()) return null;
+  return sendChat(chatId, text);
 }
 
 async function sendConfiguredChat(text) {
@@ -177,9 +203,11 @@ function formatProfileText(profileData) {
     '<b>👤 پروفایل</b>',
     '',
     'شناسه پروفایل: ' + Number(profile.id || 0).toLocaleString('fa-IR'),
-    'پلن فعلی: ' + (profile.plan === 'free' ? 'رایگان' : profile.plan),
+    'اشتراک: ' + (profileData.subscription ? profileData.subscription.status + ' / ' + profileData.subscription.plan : (profile.plan === 'free' ? 'رایگان' : profile.plan)),
     'وضعیت نوتیف: ' + (settings.enabled ? 'روشن' : 'خاموش'),
     'بازه نوتیف: ' + intervalLabel(settings.interval_minutes || config.defaultNotificationIntervalMinutes),
+    'هشدار فعال: ' + Number(profileData.alertCounts && profileData.alertCounts.active || 0).toLocaleString('fa-IR'),
+    'گزارش زمان‌بندی‌شده فعال: ' + Number(profileData.reportCounts && profileData.reportCounts.active || 0).toLocaleString('fa-IR'),
     'شماره تاییدشده: ' + (profile.phone ? profile.phone : 'ثبت نشده'),
     '',
     '<b>اکانت‌های متصل</b>',
@@ -195,13 +223,16 @@ function formatProfileText(profileData) {
 function introText() {
   return [
     '<b>📊 نبض بازار</b>',
-    'ربات پایش قیمت طلا، سکه، دلار و نقره با گزارش دوره‌ای و تحلیل جداگانه بازار.',
+    'دستیار اطلاع‌رسانی قیمت دلار، تتر، طلا، سکه و نقره.',
+    'قیمت‌ها را می‌بینی، هشدار اختصاصی می‌سازی و گزارش زمان‌بندی‌شده می‌گیری؛ بدون توصیه خرید یا فروش.',
     '',
     ...formatBotLinks(PLATFORM),
     '',
     '<b>از دکمه‌های پایین صفحه استفاده کن</b>',
-    '📊 گزارش فوری: قیمت‌ها و منابع',
-    '🧠 تحلیل بازار: خرید پله‌ای/نگهداری/کاهش ریسک به‌صورت جدا',
+    '📊 قیمت لحظه‌ای: قیمت‌ها و منابع',
+    '🎯 هشدارهای من: ساخت و مدیریت هشدار قیمت',
+    '🕘 گزارش‌های من: گزارش روزانه در ساعت دلخواه',
+    '💳 اشتراک من: trial، پلن‌ها و پرداخت دستی',
     '🔔 تنظیمات اطلاع‌رسانی: انتخاب بازه پیام',
     '👤 پروفایل: پلن، اکانت‌های متصل و پرداخت‌ها',
     '',
@@ -356,11 +387,81 @@ async function sendSettings(ctx) {
     '• نماد طلا: ' + config.tgjuGoldSymbol,
     '• نماد سکه: ' + config.tgjuCoinSymbol,
     '• منابع فعال: ' + config.enabledSources.join(', '),
-    '• آستانه خرید: ' + config.buyBubblePercent + '٪',
-    '• آستانه فروش: ' + config.sellBubblePercent + '٪',
+    '• آستانه رصد حباب پایین: ' + config.buyBubblePercent + '٪',
+    '• آستانه رصد حباب بالا: ' + config.sellBubblePercent + '٪',
     '• سقف تازگی تلگرام و بله: ' + config.channelSourceMaxAgeHours + ' ساعت',
     '• فاصله جمع‌آوری داخلی: ' + config.checkIntervalMinutes + ' دقیقه'
   ].join('\n'));
+}
+
+async function sendAlertsMenu(ctx) {
+  upsertUser(ctx.chat, isAdminChat(ctx.chat.id), PLATFORM);
+  await reply(ctx, formatAlertList(listPriceAlerts(ctx.chat.id, PLATFORM)));
+}
+
+async function sendReportsMenu(ctx) {
+  upsertUser(ctx.chat, isAdminChat(ctx.chat.id), PLATFORM);
+  await reply(ctx, formatReportList(listScheduledReports(ctx.chat.id, PLATFORM)));
+}
+
+async function handleAlertCommand(ctx, rawText) {
+  upsertUser(ctx.chat, isAdminChat(ctx.chat.id), PLATFORM);
+  const parsed = parsePriceAlertCommand(rawText);
+  if (!parsed) {
+    await sendAlertsMenu(ctx);
+    return;
+  }
+  const result = createPriceAlert(ctx.chat.id, PLATFORM, parsed);
+  if (!result.ok) {
+    await reply(ctx, formatLimitText('alert', result.limit, result.subscription));
+    return;
+  }
+  await reply(ctx, formatPriceAlertCreated(result.alert));
+}
+
+async function handleReportTimeCommand(ctx, rawText) {
+  upsertUser(ctx.chat, isAdminChat(ctx.chat.id), PLATFORM);
+  const parsed = parseScheduledReportCommand(rawText);
+  if (!parsed) {
+    await sendReportsMenu(ctx);
+    return;
+  }
+  const result = createScheduledReport(ctx.chat.id, PLATFORM, parsed);
+  if (!result.ok) {
+    await reply(ctx, formatLimitText('report', result.limit, result.subscription));
+    return;
+  }
+  await reply(ctx, formatScheduledReportCreated(result.report));
+}
+
+async function handleReceipt(ctx, rawText) {
+  const user = upsertUser(ctx.chat, isAdminChat(ctx.chat.id), PLATFORM);
+  const receipt = rawText.replace(/^\/receipt(@\w+)?\s*/i, '').trim();
+  if (!receipt) {
+    await reply(ctx, 'متن رسید یا کد پیگیری را بعد از دستور بفرست. نمونه: /receipt پیگیری ۱۲۳۴');
+    return;
+  }
+  const payment = recordPayment(user.profile_id, null, 'manual', null, 'pending', receipt);
+  await reply(ctx, 'رسید ثبت شد و برای بررسی ادمین در صف تایید قرار گرفت. شناسه رسید: #' + Number(payment.id).toLocaleString('fa-IR'));
+  await sendAdminChats('رسید جدید نبض بازار در بله\nپروفایل: ' + user.profile_id + '\nرسید: ' + receipt);
+}
+
+async function handleAdminSubscription(ctx, rawText) {
+  if (!isAdminChat(ctx.chat.id)) {
+    await reply(ctx, 'این فرمان فقط برای ادمین فعال است.');
+    return;
+  }
+  const parts = rawText.trim().split(/\s+/);
+  const profileId = Number(parts[1]);
+  const plan = parts[2] || 'basic';
+  const days = Number(parts[3] || 30);
+  const reference = parts.slice(4).join(' ') || null;
+  if (!Number.isInteger(profileId) || profileId <= 0 || !Number.isFinite(days) || days <= 0) {
+    await reply(ctx, 'فرمت درست: /admin_sub PROFILE_ID basic 30 ref');
+    return;
+  }
+  const subscription = setSubscription(profileId, plan, 'active', days, reference);
+  await reply(ctx, 'اشتراک پروفایل ' + profileId.toLocaleString('fa-IR') + ' فعال شد: ' + subscription.status + ' / ' + subscription.plan);
 }
 
 async function runScheduledNotifications() {
@@ -449,7 +550,7 @@ async function handleText(ctx) {
     return;
   }
 
-  if (command === '/check' || text === '📊 گزارش فوری') {
+  if (command === '/check' || text === '📊 گزارش فوری' || text === '📊 قیمت لحظه‌ای') {
     try {
       upsertNotificationSettings(ctx.chat.id, undefined, PLATFORM);
       const { message } = await collectReport();
@@ -474,6 +575,69 @@ async function handleText(ctx) {
   if (command === '/profile' || command === '/account' || text === '👤 پروفایل') {
     upsertNotificationSettings(ctx.chat.id, undefined, PLATFORM);
     await reply(ctx, formatProfileText(getProfile(ctx.chat.id, PLATFORM)));
+    return;
+  }
+
+  if (command === '/subscription' || text === '💳 اشتراک من') {
+    upsertNotificationSettings(ctx.chat.id, undefined, PLATFORM);
+    await reply(ctx, formatSubscriptionText(getProfile(ctx.chat.id, PLATFORM)));
+    return;
+  }
+
+  if (command === '/plans') {
+    await reply(ctx, formatPlansText());
+    return;
+  }
+
+  if (command === '/alert' || command === '/alerts' || text === '🎯 هشدارهای من' || /^هشدار\s+/i.test(text)) {
+    const sourceText = /^هشدار\s+/i.test(text) ? '/alert ' + text.replace(/^هشدار\s+/i, '') : text;
+    await handleAlertCommand(ctx, sourceText);
+    return;
+  }
+
+  if (command === '/alert_off') {
+    const id = Number((text.match(/[0-9۰-۹٠-٩]+/) || [])[0]
+      ?.replace(/[۰-۹]/g, (char) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(char)))
+      ?.replace(/[٠-٩]/g, (char) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(char))));
+    if (!Number.isInteger(id)) {
+      await reply(ctx, 'شناسه هشدار را بفرست. نمونه: /alert_off 12');
+      return;
+    }
+    const ok = setPriceAlertActive(ctx.chat.id, PLATFORM, id, false);
+    await reply(ctx, ok ? 'هشدار خاموش شد.' : 'هشدار پیدا نشد.');
+    return;
+  }
+
+  if (command === '/report_time' || command === '/reports' || text === '🕘 گزارش‌های من' || /^گزارش\s+/i.test(text)) {
+    if (command === '/reports' || text === '🕘 گزارش‌های من') {
+      await sendReportsMenu(ctx);
+      return;
+    }
+    const sourceText = /^گزارش\s+/i.test(text) ? '/report_time ' + text.replace(/^گزارش\s+/i, '') : text;
+    await handleReportTimeCommand(ctx, sourceText);
+    return;
+  }
+
+  if (command === '/report_off') {
+    const id = Number((text.match(/[0-9۰-۹٠-٩]+/) || [])[0]
+      ?.replace(/[۰-۹]/g, (char) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(char)))
+      ?.replace(/[٠-٩]/g, (char) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(char))));
+    if (!Number.isInteger(id)) {
+      await reply(ctx, 'شناسه گزارش را بفرست. نمونه: /report_off 12');
+      return;
+    }
+    const ok = setScheduledReportActive(ctx.chat.id, PLATFORM, id, false);
+    await reply(ctx, ok ? 'گزارش زمان‌بندی‌شده خاموش شد.' : 'گزارش پیدا نشد.');
+    return;
+  }
+
+  if (command === '/receipt') {
+    await handleReceipt(ctx, text);
+    return;
+  }
+
+  if (command === '/admin_sub') {
+    await handleAdminSubscription(ctx, text);
     return;
   }
 
@@ -668,4 +832,4 @@ async function startBaleBot() {
   };
 }
 
-module.exports = { startBaleBot };
+module.exports = { startBaleBot, sendBaleDirect };

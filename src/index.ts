@@ -7,21 +7,54 @@ const { buildAnalysisReport, buildReport, getSnapshot, refreshSnapshotCache } = 
 const { parseMarketMessage } = require('./message-parser');
 const { formatAdminPanel, formatSourceAuditReport, formatBotLinks } = require('./format');
 const { formatAdminAlert, getNewAdminAlerts } = require('./admin-alerts');
-const { startBaleBot } = require('./bale-bot');
+const { startBaleBot, sendBaleDirect } = require('./bale-bot');
 const {
   createAccountLinkCode,
+  createPriceAlert,
+  createScheduledReport,
+  getChannelPublishState,
   getProfile,
   getLatestSourceAudit,
   getNotificationSettings,
   linkAccountWithCode,
+  listActivePriceAlerts,
+  listActiveScheduledReports,
   listDueNotificationSettings,
+  listPriceAlerts,
+  listProfileRecipients,
+  listScheduledReports,
+  logOutboundMessage,
+  markChannelPublished,
   markNotificationSent,
+  markPriceAlertTriggered,
+  markScheduledReportSent,
+  recordPayment,
   setProfilePhone,
   setNotificationEnabled,
   setNotificationInterval,
+  setPriceAlertActive,
+  setScheduledReportActive,
+  setSubscription,
   upsertNotificationSettings,
   upsertUser
 } = require('./database');
+const {
+  alertMatches,
+  channelPublishDue,
+  formatAlertList,
+  formatChannelReport,
+  formatLimitText,
+  formatPlansText,
+  formatPriceAlertCreated,
+  formatReportList,
+  formatScheduledReport,
+  formatScheduledReportCreated,
+  formatSubscriptionText,
+  formatTriggeredAlert,
+  parsePriceAlertCommand,
+  parseScheduledReportCommand,
+  reportDue
+} = require('./mvp');
 
 if (!config.telegramBotToken) {
   throw new Error('TELEGRAM_BOT_TOKEN is required');
@@ -35,12 +68,13 @@ const pendingCodeLinks = new Set();
 
 function mainKeyboard(isAdmin = false) {
   const rows = [
-    ['📊 گزارش فوری', '🧠 تحلیل بازار'],
+    ['📊 قیمت لحظه‌ای', '🎯 هشدارهای من'],
+    ['🕘 گزارش‌های من', '💳 اشتراک من'],
     ['🔔 تنظیمات اطلاع‌رسانی', '👤 پروفایل'],
     ['🔗 اتصال اکانت‌ها'],
     ['⚙️ تنظیمات']
   ];
-  if (isAdmin) rows[3].push('🛡 پنل ادمین');
+  if (isAdmin) rows[4].push('🛡 پنل ادمین');
   return Markup.keyboard(rows).resize();
 }
 
@@ -171,9 +205,11 @@ function formatProfileText(profileData) {
     '<b>👤 پروفایل</b>',
     '',
     'شناسه پروفایل: ' + Number(profile.id || 0).toLocaleString('fa-IR'),
-    'پلن فعلی: ' + (profile.plan === 'free' ? 'رایگان' : profile.plan),
+    'اشتراک: ' + (profileData.subscription ? profileData.subscription.status + ' / ' + profileData.subscription.plan : (profile.plan === 'free' ? 'رایگان' : profile.plan)),
     'وضعیت نوتیف: ' + (settings.enabled ? 'روشن' : 'خاموش'),
     'بازه نوتیف: ' + intervalLabel(settings.interval_minutes || config.defaultNotificationIntervalMinutes),
+    'هشدار فعال: ' + Number(profileData.alertCounts && profileData.alertCounts.active || 0).toLocaleString('fa-IR'),
+    'گزارش زمان‌بندی‌شده فعال: ' + Number(profileData.reportCounts && profileData.reportCounts.active || 0).toLocaleString('fa-IR'),
     'شماره تاییدشده: ' + (profile.phone ? profile.phone : 'ثبت نشده'),
     '',
     '<b>اکانت‌های متصل</b>',
@@ -189,13 +225,16 @@ function formatProfileText(profileData) {
 function introText() {
   return [
     '<b>📊 نبض بازار</b>',
-    'ربات پایش قیمت طلا، سکه، دلار و نقره با گزارش دوره‌ای و تحلیل جداگانه بازار.',
+    'دستیار اطلاع‌رسانی قیمت دلار، تتر، طلا، سکه و نقره.',
+    'قیمت‌ها را می‌بینی، هشدار اختصاصی می‌سازی و گزارش زمان‌بندی‌شده می‌گیری؛ بدون توصیه خرید یا فروش.',
     '',
     ...formatBotLinks('telegram'),
     '',
     '<b>از دکمه‌های پایین صفحه استفاده کن</b>',
-    '📊 گزارش فوری: قیمت‌ها و منابع',
-    '🧠 تحلیل بازار: خرید پله‌ای/نگهداری/کاهش ریسک به‌صورت جدا',
+    '📊 قیمت لحظه‌ای: قیمت‌ها و منابع',
+    '🎯 هشدارهای من: ساخت و مدیریت هشدار قیمت',
+    '🕘 گزارش‌های من: گزارش روزانه در ساعت دلخواه',
+    '💳 اشتراک من: trial، پلن‌ها و پرداخت دستی',
     '🔔 تنظیمات اطلاع‌رسانی: انتخاب بازه پیام',
     '👤 پروفایل: پلن، اکانت‌های متصل و پرداخت‌ها',
     '',
@@ -206,7 +245,8 @@ function introText() {
 function phoneRequestKeyboard(ctx) {
   return Markup.keyboard([
     [Markup.button.contactRequest('📱 ارسال شماره موبایل')],
-    ['📊 گزارش فوری', '🧠 تحلیل بازار'],
+    ['📊 قیمت لحظه‌ای', '🎯 هشدارهای من'],
+    ['🕘 گزارش‌های من', '💳 اشتراک من'],
     ['🔔 تنظیمات اطلاع‌رسانی', '👤 پروفایل'],
     ['🔗 اتصال اکانت‌ها'],
     ['⚙️ تنظیمات']
@@ -402,6 +442,160 @@ async function runScheduledNotifications() {
   }
 }
 
+async function sendProfileMessage(profileId, text, messengerChannel = 'both', messageType = 'mvp') {
+  const recipients = listProfileRecipients(profileId);
+  for (const recipient of recipients) {
+    const platform = recipient.platform || 'telegram';
+    if (messengerChannel === 'telegram' && platform !== 'telegram') continue;
+    if (messengerChannel === 'bale' && platform !== 'bale') continue;
+    const publicId = recipient.platform_chat_id || recipient.chat_id;
+    try {
+      if (platform === 'bale') {
+        await sendBaleDirect(publicId, text);
+      } else {
+        await sendChat(publicId, text);
+      }
+      logOutboundMessage(profileId, platform, String(publicId), messageType, 'sent');
+    } catch (error) {
+      logOutboundMessage(profileId, platform, String(publicId), messageType, 'failed', error.message);
+      console.error('MVP message failed for profile ' + profileId + ' on ' + platform + ':', error);
+    }
+  }
+}
+
+async function runPriceAlerts(snapshot) {
+  const alerts = listActivePriceAlerts();
+  for (const alert of alerts) {
+    if (!['trial', 'active'].includes(alert.status)) continue;
+    if (alert.expires_at && Date.parse(alert.expires_at) <= Date.now()) continue;
+    const match = alertMatches(alert, snapshot);
+    if (!match.ok) continue;
+    const message = formatTriggeredAlert(alert, match.asset);
+    await sendProfileMessage(alert.profile_id, message, 'both', 'price_alert');
+    markPriceAlertTriggered(alert.id, message, match.asset.price, alert.repeat_type === 'once');
+  }
+}
+
+async function runUserScheduledReports(snapshot) {
+  const reports = listActiveScheduledReports();
+  const sentAt = new Date().toISOString();
+  for (const report of reports) {
+    if (!['trial', 'active'].includes(report.status)) continue;
+    if (report.expires_at && Date.parse(report.expires_at) <= Date.now()) continue;
+    if (!reportDue(report)) continue;
+    const message = formatScheduledReport(report, snapshot);
+    await sendProfileMessage(report.profile_id, message, report.messenger_channel || 'telegram', 'scheduled_report');
+    markScheduledReportSent(report.id, sentAt);
+  }
+}
+
+async function runChannelPublisher(snapshot) {
+  const state = getChannelPublishState();
+  if (!channelPublishDue(state)) return;
+  let attempted = false;
+  if (config.telegramPublicChannelId) {
+    attempted = true;
+    try {
+      await bot.telegram.sendMessage(config.telegramPublicChannelId, formatChannelReport(snapshot, 'telegram'), messageOptions);
+    } catch (error) {
+      console.error('Telegram channel publish failed:', error.message);
+    }
+  }
+  if (config.balePublicChannelId) {
+    attempted = true;
+    try {
+      await sendBaleDirect(config.balePublicChannelId, formatChannelReport(snapshot, 'bale'));
+    } catch (error) {
+      console.error('Bale channel publish failed:', error.message);
+    }
+  }
+  if (attempted) markChannelPublished();
+}
+
+let mvpJobsRunning = false;
+async function runMvpJobs() {
+  if (mvpJobsRunning) return;
+  mvpJobsRunning = true;
+  try {
+    const snapshot = await getSnapshot();
+    await runPriceAlerts(snapshot);
+    await runUserScheduledReports(snapshot);
+    await runChannelPublisher(snapshot);
+  } finally {
+    mvpJobsRunning = false;
+  }
+}
+
+async function sendAlertsMenu(ctx) {
+  upsertUser(ctx.chat, isAdminChat(ctx));
+  await safeReply(ctx, formatAlertList(listPriceAlerts(ctx.chat.id)));
+}
+
+async function sendReportsMenu(ctx) {
+  upsertUser(ctx.chat, isAdminChat(ctx));
+  await safeReply(ctx, formatReportList(listScheduledReports(ctx.chat.id)));
+}
+
+async function handleAlertCommand(ctx) {
+  upsertUser(ctx.chat, isAdminChat(ctx));
+  const parsed = parsePriceAlertCommand(ctx.message.text);
+  if (!parsed) {
+    await sendAlertsMenu(ctx);
+    return;
+  }
+  const result = createPriceAlert(ctx.chat.id, 'telegram', parsed);
+  if (!result.ok) {
+    await safeReply(ctx, formatLimitText('alert', result.limit, result.subscription));
+    return;
+  }
+  await safeReply(ctx, formatPriceAlertCreated(result.alert));
+}
+
+async function handleReportTimeCommand(ctx) {
+  upsertUser(ctx.chat, isAdminChat(ctx));
+  const parsed = parseScheduledReportCommand(ctx.message.text);
+  if (!parsed) {
+    await sendReportsMenu(ctx);
+    return;
+  }
+  const result = createScheduledReport(ctx.chat.id, 'telegram', parsed);
+  if (!result.ok) {
+    await safeReply(ctx, formatLimitText('report', result.limit, result.subscription));
+    return;
+  }
+  await safeReply(ctx, formatScheduledReportCreated(result.report));
+}
+
+async function handleAdminSubscription(ctx) {
+  if (!isAdminChat(ctx)) {
+    await safeReply(ctx, 'این فرمان فقط برای ادمین فعال است.');
+    return;
+  }
+  const parts = ctx.message.text.trim().split(/\s+/);
+  const profileId = Number(parts[1]);
+  const plan = parts[2] || 'basic';
+  const days = Number(parts[3] || 30);
+  const reference = parts.slice(4).join(' ') || null;
+  if (!Number.isInteger(profileId) || profileId <= 0 || !Number.isFinite(days) || days <= 0) {
+    await safeReply(ctx, 'فرمت درست: <code>/admin_sub PROFILE_ID basic 30 ref</code>');
+    return;
+  }
+  const subscription = setSubscription(profileId, plan, 'active', days, reference);
+  await safeReply(ctx, 'اشتراک پروفایل ' + profileId.toLocaleString('fa-IR') + ' فعال شد: ' + subscription.status + ' / ' + subscription.plan);
+}
+
+async function handleReceipt(ctx) {
+  const user = upsertUser(ctx.chat, isAdminChat(ctx));
+  const receipt = ctx.message.text.replace(/^\/receipt(@\w+)?\s*/i, '').trim();
+  if (!receipt) {
+    await safeReply(ctx, 'متن رسید یا کد پیگیری را بعد از دستور بفرست. نمونه: <code>/receipt پیگیری ۱۲۳۴</code>');
+    return;
+  }
+  const payment = recordPayment(user.profile_id, null, 'manual', null, 'pending', receipt);
+  await safeReply(ctx, 'رسید ثبت شد و برای بررسی ادمین در صف تایید قرار گرفت. شناسه رسید: #' + Number(payment.id).toLocaleString('fa-IR'));
+  await sendAdminChats('رسید جدید نبض بازار\nپروفایل: ' + user.profile_id + '\nرسید: ' + receipt);
+}
+
 async function configureTelegramBotInfo() {
   const description = [
     'نبض بازار، ربات پایش قیمت طلا، سکه، دلار و نقره است.',
@@ -456,6 +650,59 @@ bot.command(['profile', 'account'], async (ctx) => {
   await safeReply(ctx, formatProfileText(getProfile(ctx.chat.id)));
 });
 
+bot.command(['subscription', 'plans'], async (ctx) => {
+  upsertUser(ctx.chat, isAdminChat(ctx));
+  if (ctx.message.text.replace(/@\w+/, '').startsWith('/plans')) {
+    await safeReply(ctx, formatPlansText());
+    return;
+  }
+  await safeReply(ctx, formatSubscriptionText(getProfile(ctx.chat.id)));
+});
+
+bot.command(['alert', 'alerts'], async (ctx) => {
+  await handleAlertCommand(ctx);
+});
+
+bot.command('alert_off', async (ctx) => {
+  const id = Number((ctx.message.text.match(/[0-9۰-۹٠-٩]+/) || [])[0]
+    ?.replace(/[۰-۹]/g, (char) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(char)))
+    ?.replace(/[٠-٩]/g, (char) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(char))));
+  if (!Number.isInteger(id)) {
+    await safeReply(ctx, 'شناسه هشدار را بفرست. نمونه: <code>/alert_off 12</code>');
+    return;
+  }
+  const ok = setPriceAlertActive(ctx.chat.id, 'telegram', id, false);
+  await safeReply(ctx, ok ? 'هشدار خاموش شد.' : 'هشدار پیدا نشد.');
+});
+
+bot.command(['report_time', 'reports'], async (ctx) => {
+  if (ctx.message.text.replace(/@\w+/, '').startsWith('/reports')) {
+    await sendReportsMenu(ctx);
+    return;
+  }
+  await handleReportTimeCommand(ctx);
+});
+
+bot.command('report_off', async (ctx) => {
+  const id = Number((ctx.message.text.match(/[0-9۰-۹٠-٩]+/) || [])[0]
+    ?.replace(/[۰-۹]/g, (char) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(char)))
+    ?.replace(/[٠-٩]/g, (char) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(char))));
+  if (!Number.isInteger(id)) {
+    await safeReply(ctx, 'شناسه گزارش را بفرست. نمونه: <code>/report_off 12</code>');
+    return;
+  }
+  const ok = setScheduledReportActive(ctx.chat.id, 'telegram', id, false);
+  await safeReply(ctx, ok ? 'گزارش زمان‌بندی‌شده خاموش شد.' : 'گزارش پیدا نشد.');
+});
+
+bot.command('receipt', async (ctx) => {
+  await handleReceipt(ctx);
+});
+
+bot.command('admin_sub', async (ctx) => {
+  await handleAdminSubscription(ctx);
+});
+
 bot.command('link', async (ctx) => {
   upsertUser(ctx.chat, isAdminChat(ctx));
   const arg = ctx.message.text.replace(/^\/link(@\w+)?\s*/i, '').trim();
@@ -492,8 +739,8 @@ async function sendSettings(ctx) {
     '• نماد طلا: ' + config.tgjuGoldSymbol,
     '• نماد سکه: ' + config.tgjuCoinSymbol,
     '• منابع فعال: ' + config.enabledSources.join(', '),
-    '• آستانه خرید: ' + config.buyBubblePercent + '٪',
-    '• آستانه فروش: ' + config.sellBubblePercent + '٪',
+    '• آستانه رصد حباب پایین: ' + config.buyBubblePercent + '٪',
+    '• آستانه رصد حباب بالا: ' + config.sellBubblePercent + '٪',
     '• سقف تازگی تلگرام و بله: ' + config.channelSourceMaxAgeHours + ' ساعت',
     '• فاصله جمع‌آوری داخلی: ' + config.checkIntervalMinutes + ' دقیقه'
   ].join('\n'));
@@ -528,7 +775,7 @@ bot.command(['notify', 'notifications'], async (ctx) => {
   await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
 });
 
-bot.hears('📊 گزارش فوری', async (ctx) => {
+bot.hears(['📊 گزارش فوری', '📊 قیمت لحظه‌ای'], async (ctx) => {
   try {
     upsertUser(ctx.chat, isAdminChat(ctx));
     upsertNotificationSettings(ctx.chat.id);
@@ -539,7 +786,7 @@ bot.hears('📊 گزارش فوری', async (ctx) => {
   }
 });
 
-bot.hears('🧠 تحلیل بازار', async (ctx) => {
+bot.hears(['🧠 تحلیل بازار', '📈 وضعیت بازار'], async (ctx) => {
   try {
     upsertUser(ctx.chat, isAdminChat(ctx));
     upsertNotificationSettings(ctx.chat.id);
@@ -554,6 +801,19 @@ bot.hears('🔔 تنظیمات اطلاع‌رسانی', async (ctx) => {
   upsertUser(ctx.chat, isAdminChat(ctx));
   const settings = upsertNotificationSettings(ctx.chat.id);
   await safeReply(ctx, formatNotificationSettings(settings), notificationKeyboard(settings));
+});
+
+bot.hears('🎯 هشدارهای من', async (ctx) => {
+  await sendAlertsMenu(ctx);
+});
+
+bot.hears('🕘 گزارش‌های من', async (ctx) => {
+  await sendReportsMenu(ctx);
+});
+
+bot.hears('💳 اشتراک من', async (ctx) => {
+  upsertUser(ctx.chat, isAdminChat(ctx));
+  await safeReply(ctx, formatSubscriptionText(getProfile(ctx.chat.id)));
 });
 
 bot.hears('👤 پروفایل', async (ctx) => {
@@ -690,6 +950,16 @@ bot.on('text', async (ctx, next) => {
       await handleCodeLink(ctx, text);
       return;
     }
+    if (/^هشدار\s+/i.test(text)) {
+      ctx.message.text = '/alert ' + text.replace(/^هشدار\s+/i, '');
+      await handleAlertCommand(ctx);
+      return;
+    }
+    if (/^گزارش\s+/i.test(text)) {
+      ctx.message.text = '/report_time ' + text.replace(/^گزارش\s+/i, '');
+      await handleReportTimeCommand(ctx);
+      return;
+    }
     return next();
   }
   const minutes = parseNotifyMinutes(ctx.message.text);
@@ -781,8 +1051,16 @@ async function startNabzBazarBot() {
       console.error('Scheduled check failed:', error);
     });
   }, 60 * 1000));
+  intervals.push(setInterval(() => {
+    runMvpJobs().catch((error) => {
+      console.error('MVP jobs failed:', error);
+    });
+  }, 60 * 1000));
   await runScheduledNotifications().catch((error) => {
     console.error('Initial check failed:', error);
+  });
+  await runMvpJobs().catch((error) => {
+    console.error('Initial MVP jobs failed:', error);
   });
   console.log('nabz bazar starting Bale bot');
   const baleRuntime = await startBaleBot();

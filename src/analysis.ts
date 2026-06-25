@@ -99,7 +99,7 @@ function valuationScore(bubblePercent, cheapAt, expensiveAt) {
 }
 
 function technicalScore(signal) {
-  if (!signal) return { score: 0, label: 'سیگنال جهانی نداریم' };
+  if (!signal) return { score: 0, label: 'شاخص جهانی در دسترس نیست' };
   const pieces = [
     Number(signal.recommendAll),
     Number(signal.recommendOneHour),
@@ -139,9 +139,9 @@ function decisionFromScore(score) {
 
 function decisionLabel(decision) {
   return {
-    buy: 'خرید پله‌ای',
-    sell: 'کاهش ریسک (فروش)',
-    hold: 'نگهداری'
+    buy: 'روند افزایشی',
+    sell: 'روند کاهشی',
+    hold: 'روند خنثی'
   }[decision] || 'نامشخص';
 }
 
@@ -154,9 +154,9 @@ function trendWord(change) {
 
 function actionWord(decision) {
   return {
-    buy: 'ورود پله‌ای',
-    sell: 'کاهش ریسک',
-    hold: 'نگهداری'
+    buy: 'رصد رشد',
+    sell: 'رصد کاهش',
+    hold: 'رصد'
   }[decision] || 'رصد';
 }
 
@@ -179,7 +179,7 @@ function shortReason(decision, bubblePercent, trend, tech) {
     pieces.push(tech.label.replace(' است', ''));
   }
   if (!pieces.length) {
-    pieces.push(decision === 'hold' ? 'سیگنال‌ها هم‌جهت نیستند' : 'امتیاز از آستانه عبور کرده');
+    pieces.push(decision === 'hold' ? 'شاخص‌ها هم‌جهت نیستند' : 'امتیاز تغییرات از آستانه عبور کرده');
   }
   return pieces.slice(0, 2).join('، ');
 }

@@ -71,6 +71,7 @@ function createProfile(displayName = null) {
   `).run(displayName, now, now);
   const profileId = Number(result.lastInsertRowid);
   ensureProfileNotificationSettings(profileId);
+  ensureSubscription(profileId);
   return profileId;
 }
 
@@ -256,7 +257,87 @@ function getDb() {
 
     create index if not exists idx_source_audit_messages_batch
       on source_audit_messages(batch_id);
+
+    create table if not exists subscriptions (
+      id integer primary key autoincrement,
+      profile_id integer not null unique,
+      plan text not null default 'pro',
+      status text not null default 'trial',
+      started_at text,
+      expires_at text,
+      trial_started_at text,
+      trial_ends_at text,
+      payment_reference text,
+      auto_renew_enabled integer not null default 0,
+      created_at text not null,
+      updated_at text not null,
+      foreign key (profile_id) references profiles(id) on delete cascade
+    );
+
+    create table if not exists price_alerts (
+      id integer primary key autoincrement,
+      profile_id integer not null,
+      asset text not null,
+      condition text not null,
+      target_price real not null,
+      is_active integer not null default 1,
+      repeat_type text not null default 'once',
+      last_triggered_at text,
+      created_at text not null,
+      updated_at text not null,
+      foreign key (profile_id) references profiles(id) on delete cascade
+    );
+
+    create index if not exists idx_price_alerts_active
+      on price_alerts(is_active, asset);
+
+    create table if not exists scheduled_reports (
+      id integer primary key autoincrement,
+      profile_id integer not null,
+      assets_json text not null,
+      schedule_time text not null,
+      days_of_week_json text not null,
+      messenger_channel text not null default 'telegram',
+      is_active integer not null default 1,
+      last_sent_at text,
+      created_at text not null,
+      updated_at text not null,
+      foreign key (profile_id) references profiles(id) on delete cascade
+    );
+
+    create index if not exists idx_scheduled_reports_active
+      on scheduled_reports(is_active, schedule_time);
+
+    create table if not exists outbound_message_log (
+      id integer primary key autoincrement,
+      profile_id integer,
+      platform text,
+      chat_id text,
+      message_type text,
+      status text not null,
+      error_message text,
+      created_at text not null
+    );
+
+    create table if not exists alert_trigger_log (
+      id integer primary key autoincrement,
+      alert_id integer,
+      profile_id integer not null,
+      asset text not null,
+      price real,
+      message text,
+      created_at text not null
+    );
+
+    create table if not exists channel_publish_state (
+      id integer primary key check (id = 1),
+      last_published_at text,
+      updated_at text not null
+    );
   `);
+  addColumnIfMissing('payment_history', 'method', 'text');
+  addColumnIfMissing('payment_history', 'receipt_text', 'text');
+  addColumnIfMissing('payment_history', 'verified_at', 'text');
   migrateProfiles();
   return db;
 }
@@ -367,6 +448,7 @@ function upsertUser(chat, isAdmin = false, platform = 'telegram') {
       updated_at = excluded.updated_at
   `).run(id, firstName, username, isAdmin ? 1 : 0, now, now, profileId, platform, String(chat && chat.id ? chat.id : chat));
   ensureProfileNotificationSettings(profileId);
+  ensureSubscription(profileId);
   return getDb().prepare('select * from users where chat_id = ?').get(id);
 }
 
@@ -476,8 +558,12 @@ function listDueNotificationSettings(referenceDate = new Date(), platform = 'tel
 
 function getProfile(chatId, platform = 'telegram') {
   const user = upsertUser(chatId, false, platform);
+  ensureSubscription(user.profile_id);
   const profile = getDb().prepare('select * from profiles where id = ?').get(user.profile_id);
   const settings = getNotificationSettings(chatId, platform);
+  const subscription = getSubscription(user.profile_id);
+  const alertCounts = getAlertCounts(user.profile_id);
+  const reportCounts = getScheduledReportCounts(user.profile_id);
   const accounts = getDb().prepare(`
     select chat_id, platform, platform_chat_id, first_name, username, created_at, updated_at
     from users
@@ -491,7 +577,7 @@ function getProfile(chatId, platform = 'telegram') {
     order by created_at desc
     limit 10
   `).all(user.profile_id);
-  return { profile, settings, accounts, payments };
+  return { profile, settings, subscription, alertCounts, reportCounts, accounts, payments };
 }
 
 function mergeProfiles(sourceProfileId, targetProfileId) {
@@ -508,6 +594,11 @@ function mergeProfiles(sourceProfileId, targetProfileId) {
       .run(targetProfileId, now, sourceProfileId);
     getDb().prepare('update payment_history set profile_id = ? where profile_id = ?')
       .run(targetProfileId, sourceProfileId);
+    getDb().prepare('update price_alerts set profile_id = ?, updated_at = ? where profile_id = ?')
+      .run(targetProfileId, now, sourceProfileId);
+    getDb().prepare('update scheduled_reports set profile_id = ?, updated_at = ? where profile_id = ?')
+      .run(targetProfileId, now, sourceProfileId);
+    getDb().prepare('delete from subscriptions where profile_id = ?').run(sourceProfileId);
     getDb().prepare('update account_link_codes set profile_id = ? where profile_id = ? and used_at is null')
       .run(targetProfileId, sourceProfileId);
     if (sourceSettings && targetSettings && Date.parse(sourceSettings.updated_at) > Date.parse(targetSettings.updated_at)) {
@@ -582,6 +673,298 @@ function linkAccountWithCode(chatId, code, platform = 'telegram') {
   return { ok: true, profileId: link.profile_id };
 }
 
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function ensureSubscription(profileId) {
+  if (!profileId) return null;
+  const database = getDb();
+  const existing = database.prepare('select * from subscriptions where profile_id = ?').get(profileId);
+  if (existing) return existing;
+  const now = nowIso();
+  const trialEndsAt = addDays(new Date(), config.trialDays || 7).toISOString();
+  database.prepare(`
+    insert into subscriptions
+      (profile_id, plan, status, started_at, expires_at, trial_started_at, trial_ends_at, created_at, updated_at)
+    values (?, 'pro', 'trial', ?, ?, ?, ?, ?, ?)
+  `).run(profileId, now, trialEndsAt, now, trialEndsAt, now, now);
+  return database.prepare('select * from subscriptions where profile_id = ?').get(profileId);
+}
+
+function refreshSubscriptionStatus(subscription) {
+  if (!subscription) return null;
+  if (['trial', 'active'].includes(subscription.status)
+    && subscription.expires_at
+    && Date.parse(subscription.expires_at) <= Date.now()) {
+    const now = nowIso();
+    getDb().prepare(`
+      update subscriptions
+      set status = 'expired', updated_at = ?
+      where id = ?
+    `).run(now, subscription.id);
+    return getDb().prepare('select * from subscriptions where id = ?').get(subscription.id);
+  }
+  return subscription;
+}
+
+function getSubscription(profileId) {
+  return refreshSubscriptionStatus(ensureSubscription(profileId));
+}
+
+function getSubscriptionForChat(chatId, platform = 'telegram') {
+  const user = upsertUser(chatId, false, platform);
+  return getSubscription(user.profile_id);
+}
+
+function subscriptionHasPaidAccess(subscription) {
+  const active = refreshSubscriptionStatus(subscription);
+  return Boolean(active && ['trial', 'active'].includes(active.status));
+}
+
+function planLimits(subscription) {
+  const active = refreshSubscriptionStatus(subscription);
+  if (!active || active.status === 'expired' || active.status === 'cancelled') {
+    return { priceAlerts: 0, scheduledReports: 0, messengers: 1 };
+  }
+  if (active.status === 'trial' || active.plan === 'pro') {
+    return { priceAlerts: 30, scheduledReports: 6, messengers: 2 };
+  }
+  if (active.plan === 'basic') {
+    return { priceAlerts: 5, scheduledReports: 1, messengers: 1 };
+  }
+  return { priceAlerts: 1, scheduledReports: 0, messengers: 1 };
+}
+
+function setSubscription(profileId, plan, status, days, paymentReference = null) {
+  ensureSubscription(profileId);
+  const now = nowIso();
+  const normalizedPlan = ['free', 'basic', 'pro'].includes(plan) ? plan : 'basic';
+  const normalizedStatus = ['free', 'trial', 'active', 'expired', 'cancelled'].includes(status) ? status : 'active';
+  const expiresAt = Number(days) > 0 ? addDays(new Date(), Number(days)).toISOString() : null;
+  getDb().prepare(`
+    update subscriptions
+    set plan = ?, status = ?, started_at = ?, expires_at = ?, payment_reference = ?, updated_at = ?
+    where profile_id = ?
+  `).run(normalizedPlan, normalizedStatus, now, expiresAt, paymentReference, now, profileId);
+  getDb().prepare(`
+    update profiles
+    set plan = ?, updated_at = ?
+    where id = ?
+  `).run(normalizedPlan, now, profileId);
+  return getSubscription(profileId);
+}
+
+function recordPayment(profileId, amount, method = 'manual', reference = null, status = 'pending', receiptText = null) {
+  const now = nowIso();
+  const result = getDb().prepare(`
+    insert into payment_history
+      (profile_id, amount, currency, status, provider, reference, method, receipt_text, created_at)
+    values (?, ?, 'IRR', ?, 'manual', ?, ?, ?, ?)
+  `).run(profileId, amount || null, status, reference, method, receiptText, now);
+  return getDb().prepare('select * from payment_history where id = ?').get(Number(result.lastInsertRowid));
+}
+
+function getAlertCounts(profileId) {
+  const row = getDb().prepare(`
+    select
+      count(*) as total,
+      sum(case when is_active = 1 then 1 else 0 end) as active
+    from price_alerts
+    where profile_id = ?
+  `).get(profileId) || {};
+  return { total: Number(row.total || 0), active: Number(row.active || 0) };
+}
+
+function getScheduledReportCounts(profileId) {
+  const row = getDb().prepare(`
+    select
+      count(*) as total,
+      sum(case when is_active = 1 then 1 else 0 end) as active
+    from scheduled_reports
+    where profile_id = ?
+  `).get(profileId) || {};
+  return { total: Number(row.total || 0), active: Number(row.active || 0) };
+}
+
+function createPriceAlert(chatId, platform, alert) {
+  const user = upsertUser(chatId, false, platform);
+  const subscription = getSubscription(user.profile_id);
+  const limits = planLimits(subscription);
+  const counts = getAlertCounts(user.profile_id);
+  if (counts.active >= limits.priceAlerts) {
+    return { ok: false, reason: 'limit', limit: limits.priceAlerts, subscription };
+  }
+  const now = nowIso();
+  const result = getDb().prepare(`
+    insert into price_alerts
+      (profile_id, asset, condition, target_price, is_active, repeat_type, created_at, updated_at)
+    values (?, ?, ?, ?, 1, ?, ?, ?)
+  `).run(
+    user.profile_id,
+    alert.asset,
+    alert.condition,
+    alert.targetPrice,
+    alert.repeatType || 'once',
+    now,
+    now
+  );
+  return {
+    ok: true,
+    alert: getDb().prepare('select * from price_alerts where id = ?').get(Number(result.lastInsertRowid)),
+    subscription
+  };
+}
+
+function listPriceAlerts(chatId, platform = 'telegram') {
+  const user = upsertUser(chatId, false, platform);
+  return getDb().prepare(`
+    select * from price_alerts
+    where profile_id = ?
+    order by is_active desc, id desc
+  `).all(user.profile_id);
+}
+
+function setPriceAlertActive(chatId, platform, alertId, active) {
+  const user = upsertUser(chatId, false, platform);
+  const now = nowIso();
+  const result = getDb().prepare(`
+    update price_alerts
+    set is_active = ?, updated_at = ?
+    where id = ? and profile_id = ?
+  `).run(active ? 1 : 0, now, alertId, user.profile_id);
+  return result.changes > 0;
+}
+
+function listActivePriceAlerts() {
+  return getDb().prepare(`
+    select pa.*, s.plan, s.status, s.expires_at
+    from price_alerts pa
+    join subscriptions s on s.profile_id = pa.profile_id
+    where pa.is_active = 1
+    order by pa.id asc
+  `).all();
+}
+
+function markPriceAlertTriggered(alertId, message, price, deactivate = false) {
+  const now = nowIso();
+  const alert = getDb().prepare('select * from price_alerts where id = ?').get(alertId);
+  if (!alert) return null;
+  getDb().prepare(`
+    update price_alerts
+    set last_triggered_at = ?, is_active = case when ? then 0 else is_active end, updated_at = ?
+    where id = ?
+  `).run(now, deactivate ? 1 : 0, now, alertId);
+  getDb().prepare(`
+    insert into alert_trigger_log (alert_id, profile_id, asset, price, message, created_at)
+    values (?, ?, ?, ?, ?, ?)
+  `).run(alert.id, alert.profile_id, alert.asset, price || null, message || null, now);
+  return getDb().prepare('select * from price_alerts where id = ?').get(alertId);
+}
+
+function createScheduledReport(chatId, platform, report) {
+  const user = upsertUser(chatId, false, platform);
+  const subscription = getSubscription(user.profile_id);
+  const limits = planLimits(subscription);
+  const counts = getScheduledReportCounts(user.profile_id);
+  if (counts.active >= limits.scheduledReports) {
+    return { ok: false, reason: 'limit', limit: limits.scheduledReports, subscription };
+  }
+  const now = nowIso();
+  const result = getDb().prepare(`
+    insert into scheduled_reports
+      (profile_id, assets_json, schedule_time, days_of_week_json, messenger_channel, is_active, created_at, updated_at)
+    values (?, ?, ?, ?, ?, 1, ?, ?)
+  `).run(
+    user.profile_id,
+    JSON.stringify(report.assets || []),
+    report.scheduleTime,
+    JSON.stringify(report.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]),
+    report.messengerChannel || platform || 'telegram',
+    now,
+    now
+  );
+  return {
+    ok: true,
+    report: getDb().prepare('select * from scheduled_reports where id = ?').get(Number(result.lastInsertRowid)),
+    subscription
+  };
+}
+
+function listScheduledReports(chatId, platform = 'telegram') {
+  const user = upsertUser(chatId, false, platform);
+  return getDb().prepare(`
+    select * from scheduled_reports
+    where profile_id = ?
+    order by is_active desc, schedule_time asc, id desc
+  `).all(user.profile_id);
+}
+
+function setScheduledReportActive(chatId, platform, reportId, active) {
+  const user = upsertUser(chatId, false, platform);
+  const now = nowIso();
+  const result = getDb().prepare(`
+    update scheduled_reports
+    set is_active = ?, updated_at = ?
+    where id = ? and profile_id = ?
+  `).run(active ? 1 : 0, now, reportId, user.profile_id);
+  return result.changes > 0;
+}
+
+function listActiveScheduledReports() {
+  return getDb().prepare(`
+    select sr.*, s.plan, s.status, s.expires_at
+    from scheduled_reports sr
+    join subscriptions s on s.profile_id = sr.profile_id
+    where sr.is_active = 1
+    order by sr.schedule_time asc, sr.id asc
+  `).all();
+}
+
+function markScheduledReportSent(reportId, sentAt = nowIso()) {
+  getDb().prepare(`
+    update scheduled_reports
+    set last_sent_at = ?, updated_at = ?
+    where id = ?
+  `).run(sentAt, sentAt, reportId);
+}
+
+function listProfileRecipients(profileId) {
+  return getDb().prepare(`
+    select chat_id, platform, platform_chat_id, first_name, username
+    from users
+    where profile_id = ?
+    order by platform asc
+  `).all(profileId);
+}
+
+function logOutboundMessage(profileId, platform, chatId, messageType, status, errorMessage = null) {
+  getDb().prepare(`
+    insert into outbound_message_log
+      (profile_id, platform, chat_id, message_type, status, error_message, created_at)
+    values (?, ?, ?, ?, ?, ?, ?)
+  `).run(profileId || null, platform || null, chatId || null, messageType || null, status, errorMessage || null, nowIso());
+}
+
+function getChannelPublishState() {
+  const database = getDb();
+  const row = database.prepare('select * from channel_publish_state where id = 1').get();
+  if (row) return row;
+  const now = nowIso();
+  database.prepare('insert into channel_publish_state (id, last_published_at, updated_at) values (1, null, ?)').run(now);
+  return database.prepare('select * from channel_publish_state where id = 1').get();
+}
+
+function markChannelPublished(sentAt = nowIso()) {
+  getDb().prepare(`
+    insert into channel_publish_state (id, last_published_at, updated_at)
+    values (1, ?, ?)
+    on conflict(id) do update set
+      last_published_at = excluded.last_published_at,
+      updated_at = excluded.updated_at
+  `).run(sentAt, sentAt);
+}
+
 module.exports = {
   getDb,
   platformChatId,
@@ -598,5 +981,26 @@ module.exports = {
   linkAccountWithCode,
   setProfilePhone,
   saveSourceAudit,
-  getLatestSourceAudit
+  getLatestSourceAudit,
+  ensureSubscription,
+  getSubscription,
+  getSubscriptionForChat,
+  subscriptionHasPaidAccess,
+  planLimits,
+  setSubscription,
+  recordPayment,
+  createPriceAlert,
+  listPriceAlerts,
+  setPriceAlertActive,
+  listActivePriceAlerts,
+  markPriceAlertTriggered,
+  createScheduledReport,
+  listScheduledReports,
+  setScheduledReportActive,
+  listActiveScheduledReports,
+  markScheduledReportSent,
+  listProfileRecipients,
+  logOutboundMessage,
+  getChannelPublishState,
+  markChannelPublished
 };

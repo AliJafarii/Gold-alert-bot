@@ -149,9 +149,9 @@ function formatAnalysisPrice(asset) {
 
 function shortDecisionLabel(decision) {
   return {
-    buy: 'خرید پله‌ای',
-    sell: 'کاهش ریسک (فروش)',
-    hold: 'نگهداری'
+    buy: 'روند افزایشی',
+    sell: 'روند کاهشی',
+    hold: 'روند خنثی'
   }[decision] || 'نامشخص';
 }
 
@@ -188,15 +188,15 @@ function formatTechnicalCaution(technical) {
   const gold = technical && technical.gold;
   if (!gold) return '';
   if (gold.recommendFourHour <= -0.5 || gold.recommendAll <= -0.5) {
-    return 'سیگنال جهانی طلا فروش قوی است؛ حتی اگر حباب داخلی جذاب شد، ورود پله‌ای و محتاط‌تر بهتر است.';
+    return 'شاخص جهانی طلا فشار کاهشی نشان می‌دهد؛ این بخش فقط وضعیت بازار را توصیف می‌کند.';
   }
   if (gold.recommendFourHour >= 0.5 || gold.recommendAll >= 0.5) {
-    return 'سیگنال جهانی طلا خرید قوی است؛ اگر حباب داخلی هم مناسب باشد، تایید بیرونی بهتری داریم.';
+    return 'شاخص جهانی طلا فشار افزایشی نشان می‌دهد؛ این بخش فقط وضعیت بازار را توصیف می‌کند.';
   }
   if (gold.rsi <= 30 || gold.rsiOneHour <= 30 || gold.rsiFourHour <= 30) {
-    return 'طلا در TradingView نزدیک اشباع فروش است؛ احتمال برگشت کوتاه‌مدت را باید جدی‌تر دید.';
+    return 'طلا در TradingView نزدیک محدوده اشباع فروش است؛ این فقط یک وضعیت تکنیکال است.';
   }
-  return 'سیگنال جهانی طلا فعلاً تایید قوی خلاف حباب داخلی نمی‌دهد.';
+  return 'شاخص جهانی طلا فعلاً تغییر شدید و هم‌جهت نشان نمی‌دهد.';
 }
 
 function formatSourceDiagnostics(snapshot) {
@@ -365,18 +365,18 @@ function formatAdminPanel(snapshot) {
 function formatDecision(decision, technical, buyThreshold, sellThreshold) {
   const caution = formatTechnicalCaution(technical);
   if (decision === 'buy') {
-    return 'حباب منفی است؛ از نظر حباب، موقعیت خرید جذاب‌تر شده.'
+    return 'حباب منفی است و بازار از این زاویه فاصله بیشتری با ارزش نظری دارد.'
       + (caution ? ' ' + caution : '');
   }
   if (decision === 'sell') {
-    return 'حباب مثبت و بالاست؛ از نظر حباب، موقعیت فروش یا احتیاط جدی‌تر شده.'
+    return 'حباب مثبت و بالاست و بازار از این زاویه فاصله بیشتری با ارزش نظری دارد.'
       + (caution ? ' ' + caution : '');
   }
-  return 'فعلاً سیگنال نداریم؛ خرید وقتی حباب سکه به '
+  return 'وضعیت فعلی خنثی است؛ آستانه رصد حباب پایین '
     + formatPercent(buyThreshold)
-    + ' یا کمتر برسد، فروش وقتی به '
+    + ' و آستانه رصد حباب بالا '
     + formatPercent(sellThreshold)
-    + ' یا بیشتر برسد.';
+    + ' است.';
 }
 
 function botLinkLines(platform = 'telegram') {
@@ -437,8 +437,10 @@ function formatReport(snapshot, platform = 'telegram') {
 
 function formatAnalysisReport(snapshot, platform = 'telegram') {
   return [
-    '<b>🧠 تحلیل بازار</b>',
+    '<b>📈 وضعیت بازار</b>',
     ...formatAnalysisSection(snapshot),
+    '',
+    'این پیام صرفاً اطلاع‌رسانی است و توصیه خرید یا فروش محسوب نمی‌شود.',
     '',
     ...formatBotLinks(platform)
   ].filter((line) => line !== '').join('\n');
