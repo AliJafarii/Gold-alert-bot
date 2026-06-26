@@ -1,6 +1,5 @@
 // @ts-nocheck
 const { config } = require('./config');
-const { formatBotLinks } = require('./format');
 
 const ASSETS = {
   usd: { title: 'دلار آزاد', aliases: ['usd', 'dollar', 'دلار', 'دلار آزاد'], icon: '💵' },
@@ -60,15 +59,16 @@ function normalizeAsset(input) {
 
 function assetValue(snapshot, assetKey) {
   const extraCoins = snapshot && snapshot.extraCoins ? snapshot.extraCoins : {};
+  const toToman = (value) => Number.isFinite(Number(value)) ? Number(value) / 10 : value;
   const map = {
     usd: snapshot && snapshot.dollarToman,
     usdt: snapshot && snapshot.tetherToman,
-    gold18: snapshot && snapshot.gold && snapshot.gold.price,
-    coin: snapshot && snapshot.coin && snapshot.coin.price,
-    half_coin: extraCoins.half && extraCoins.half.price,
-    quarter_coin: extraCoins.quarter && extraCoins.quarter.price,
-    gram_coin: extraCoins.gram && extraCoins.gram.price,
-    silver: snapshot && snapshot.silverPrice
+    gold18: toToman(snapshot && snapshot.gold && snapshot.gold.price),
+    coin: toToman(snapshot && snapshot.coin && snapshot.coin.price),
+    half_coin: toToman(extraCoins.half && extraCoins.half.price),
+    quarter_coin: toToman(extraCoins.quarter && extraCoins.quarter.price),
+    gram_coin: toToman(extraCoins.gram && extraCoins.gram.price),
+    silver: toToman(snapshot && snapshot.silverPrice)
   };
   const asset = ASSETS[assetKey];
   if (!asset) return null;
@@ -340,16 +340,19 @@ function formatChannelReport(snapshot, platform = 'telegram') {
     hour: '2-digit',
     minute: '2-digit'
   });
-  const lines = allAssetValues(snapshot, ['usd', 'usdt', 'gold18', 'coin', 'silver']).map((asset) => {
-    return asset.icon + ' ' + asset.title + ': ' + formatToman(asset.price);
+  const lines = allAssetValues(snapshot, ['usd', 'usdt', 'gold18', 'coin', 'half_coin', 'quarter_coin', 'silver']).map((asset) => {
+    const title = asset.key === 'silver' ? 'نقره' : asset.title;
+    return title + ': ' + formatToman(asset.price);
   });
   return [
-    '<b>نبض بازار | بروزرسانی ' + now + '</b>',
+    'نبض بازار | بروزرسانی قیمت',
     '',
     ...lines,
     '',
-    'برای هشدار اختصاصی قیمت و گزارش شخصی:',
-    ...formatBotLinks(platform)
+    'آخرین بروزرسانی: ' + now,
+    '',
+    'برای هشدار اختصاصی قیمت:',
+    platform === 'bale' ? config.baleBotUrl : '@NabzBazarBot'
   ].join('\n');
 }
 
